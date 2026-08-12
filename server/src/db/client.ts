@@ -8,5 +8,12 @@ if (!connectionString) {
   throw new Error('DATABASE_URL is required')
 }
 
-export const sql = postgres(connectionString)
+const useSsl =
+  process.env.DATABASE_SSL === 'true' ||
+  connectionString.includes('sslmode=require') ||
+  connectionString.includes('ssl=true')
+
+export const sql = postgres(connectionString, {
+  ...(useSsl ? { ssl: 'require' } : {}),
+})
 export const db = drizzle(sql, { schema })

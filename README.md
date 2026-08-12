@@ -111,6 +111,65 @@ docker compose down
 Do not use `docker compose down -v` unless you intend to permanently delete the
 database volume.
 
+## Railway deployment
+
+This repository includes a single-service Railway image that builds the React
+client, runs Fastify on `127.0.0.1:3001`, and serves everything through nginx
+on Railway's `PORT`. Local Docker Compose is unchanged.
+
+### 1. Create the Railway project
+
+1. Create a new Railway project from this repository.
+2. Add a **PostgreSQL** plugin to the project.
+3. Add a **service** for the app using [`railway.toml`](railway.toml), which
+   builds [`Dockerfile.railway`](Dockerfile.railway).
+
+Railway uses the config file instead of a root `Dockerfile`, so local
+`docker compose` workflows are unaffected.
+
+### 2. Link PostgreSQL to the app service
+
+In the app service settings, attach the PostgreSQL database. Railway injects
+`DATABASE_URL` automatically. No manual database host configuration is required.
+
+### 3. Set required environment variables
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `JWT_SECRET` | Yes | Long random secret for session tokens |
+| `ADMIN_PASSWORD` | Yes | Initial administrator password (seed is idempotent) |
+| `ADMIN_EMAIL` | No | Defaults to `admin@local.dev` |
+| `COOKIE_SECURE` | Yes | Set to `true` on Railway (HTTPS) |
+| `DATABASE_SSL` | Usually | Set to `true` if Railway PostgreSQL requires SSL |
+
+Do **not** set `PORT`; Railway provides it.
+
+### 4. Deploy
+
+Push to the connected branch or run:
+
+```bash
+railway up
+```
+
+On each deploy the container will:
+
+1. Apply Drizzle migrations
+2. Seed the administrator if missing
+3. Start the API and nginx reverse proxy
+4. Expose `/api/health` for Railway health checks
+
+Generate a public domain in Railway, then sign in with `ADMIN_EMAIL` and
+`ADMIN_PASSWORD`.
+
+### 5. Verify
+
+- Open `https://<your-railway-domain>/`
+- Confirm `https://<your-railway-domain>/api/health` returns `{ "status": "ok" }`
+- Sign in as the administrator and create a test event
+
+Back up the PostgreSQL plugin regularly from the Railway dashboard.
+
 ## Single-VM deployment (GCP Compute or Oracle Cloud)
 
 1. Create a small Linux VM and install Docker Engine with the Compose plugin.
@@ -158,3 +217,5 @@ docker compose exec -T db psql -U judging -d judging < judging-backup.sql
 - `nginx/` — development and production reverse-proxy configuration
 - `docker-compose.yml` — production stack
 - `docker-compose.dev.yml` — development overrides
+- `Dockerfile.railway` — single-service production image for Railway
+- `railway.toml` — Railway build and health-check configuration
