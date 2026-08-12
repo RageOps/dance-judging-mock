@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1785097038409,
+      "tag": "0000_wandering_vargas",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785098968784,
+      "tag": "0001_judge-scoring-tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785098980290,
+      "tag": "0002_migrate-judge-events",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785100794719,
+      "tag": "0003_judging-filters-status",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785103826795,
+      "tag": "0004_strictly-pairs",
+      "breakpoints": true
+    }
+  ]
+}
