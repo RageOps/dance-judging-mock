@@ -14,7 +14,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
-export const userRole = pgEnum('user_role', ['admin', 'judge'])
+export const userRole = pgEnum('user_role', ['admin', 'judge', 'coordinator'])
 export const divisionType = pgEnum('division_type', ['jack_and_jill', 'strictly'])
 export const dancerRole = pgEnum('dancer_role', ['lead', 'follow'])
 export const scoreSubmissionStatus = pgEnum('score_submission_status', [
@@ -55,6 +55,22 @@ export const judgeEventAssignments = pgTable(
       .defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.judgeId, table.eventId] })],
+)
+
+export const coordinatorEventAssignments = pgTable(
+  'coordinator_event_assignments',
+  {
+    coordinatorId: uuid('coordinator_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    assignedAt: timestamp('assigned_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.coordinatorId, table.eventId] })],
 )
 
 export const competitors = pgTable(

@@ -6,6 +6,7 @@ import Fastify from 'fastify'
 import { db } from './db/client.js'
 import {
   competitors,
+  coordinatorEventAssignments,
   divisionPairs,
   divisionRegistrations,
   divisions,
@@ -16,8 +17,11 @@ import {
   requireAdmin,
   requireAuth,
   requireEventAccess,
+  requireEventManager,
+  requireEventManagerAccess,
 } from './middleware/auth.js'
 import { authRoutes } from './routes/auth.js'
+import { coordinatorRoutes } from './routes/coordinators.js'
 import { judgeRoutes } from './routes/judges.js'
 import { scoreRoutes } from './routes/scores.js'
 
@@ -41,11 +45,26 @@ export function buildApp() {
   app.get('/api/health', async () => ({ status: 'ok' }))
   app.register(authRoutes)
   app.register(judgeRoutes)
+  app.register(coordinatorRoutes)
   app.register(scoreRoutes)
 
-  app.get('/api/events', { preHandler: requireAdmin }, async () =>
-    db.select().from(events).orderBy(asc(events.createdAt)),
-  )
+  app.get('/api/events', { preHandler: requireEventManager }, async (request, reply) => {
+    if (request.user.role === 'admin') {
+      return db.select().from(events).orderBy(asc(events.createdAt))
+    }
+    return db
+      .select({
+        id: events.id,
+        name: events.name,
+        eventDate: events.eventDate,
+        nextBibNumber: events.nextBibNumber,
+        createdAt: events.createdAt,
+      })
+      .from(coordinatorEventAssignments)
+      .innerJoin(events, eq(events.id, coordinatorEventAssignments.eventId))
+      .where(eq(coordinatorEventAssignments.coordinatorId, request.user.id))
+      .orderBy(asc(events.createdAt))
+  })
 
   app.post('/api/events', { preHandler: requireAdmin }, async (request, reply) => {
     const body = isRecord(request.body) ? request.body : {}
@@ -89,8 +108,9 @@ export function buildApp() {
 
   app.post<{ Params: { eventId: string } }>(
     '/api/events/:eventId/competitors',
-    { preHandler: requireAdmin },
+    { preHandler: requireAuth },
     async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
       const body = isRecord(request.body) ? request.body : {}
       const firstName = nonEmptyString(body.firstName)
       const lastName = nonEmptyString(body.lastName)
@@ -123,8 +143,9 @@ export function buildApp() {
 
   app.patch<{ Params: { eventId: string; id: string } }>(
     '/api/events/:eventId/competitors/:id',
-    { preHandler: requireAdmin },
+    { preHandler: requireAuth },
     async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
       const body = isRecord(request.body) ? request.body : {}
       const firstName = nonEmptyString(body.firstName)
       const lastName = nonEmptyString(body.lastName)
@@ -147,8 +168,9 @@ export function buildApp() {
 
   app.delete<{ Params: { eventId: string; id: string } }>(
     '/api/events/:eventId/competitors/:id',
-    { preHandler: requireAdmin },
+    { preHandler: requireAuth },
     async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
       const [registration] = await db
         .select({ competitorId: divisionRegistrations.competitorId })
         .from(divisionRegistrations)
@@ -201,8 +223,9 @@ export function buildApp() {
 
   app.post<{ Params: { eventId: string } }>(
     '/api/events/:eventId/divisions',
-    { preHandler: requireAdmin },
+    { preHandler: requireAuth },
     async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
       const body = isRecord(request.body) ? request.body : {}
       const name = nonEmptyString(body.name)
       const type =
@@ -229,8 +252,9 @@ export function buildApp() {
 
   app.patch<{ Params: { eventId: string; id: string } }>(
     '/api/events/:eventId/divisions/:id',
-    { preHandler: requireAdmin },
+    { preHandler: requireAuth },
     async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
       const body = isRecord(request.body) ? request.body : {}
       const name = nonEmptyString(body.name)
       const type =
@@ -258,8 +282,9 @@ export function buildApp() {
 
   app.delete<{ Params: { eventId: string; id: string } }>(
     '/api/events/:eventId/divisions/:id',
-    { preHandler: requireAdmin },
+    { preHandler: requireAuth },
     async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
       const [deleted] = await db
         .delete(divisions)
         .where(
@@ -310,8 +335,9 @@ export function buildApp() {
 
   app.put<{ Params: { eventId: string; divisionId: string } }>(
     '/api/events/:eventId/divisions/:divisionId/registrations',
-    { preHandler: requireAdmin },
+    { preHandler: requireAuth },
     async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
       const body = isRecord(request.body) ? request.body : {}
       const raw = Array.isArray(body.registrations) ? body.registrations : null
       if (!raw) return reply.code(400).send({ message: 'Registrations are required' })
@@ -442,8 +468,9 @@ export function buildApp() {
 
   app.put<{ Params: { eventId: string; divisionId: string } }>(
     '/api/events/:eventId/divisions/:divisionId/pairs',
-    { preHandler: requireAdmin },
+    { preHandler: requireAuth },
     async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
       const body = isRecord(request.body) ? request.body : {}
       const raw = Array.isArray(body.pairs) ? body.pairs : null
       if (!raw) return reply.code(400).send({ message: 'Pairs are required' })

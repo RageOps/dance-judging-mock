@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import { AuthProvider } from './context/AuthContext'
 import { useAuth } from './context/auth'
 import CompetitorsPage from './pages/CompetitorsPage'
+import CoordinatorsPage from './pages/CoordinatorsPage'
 import DivisionsPage from './pages/DivisionsPage'
 import DivisionStatusPage from './pages/DivisionStatusPage'
 import EventsPage from './pages/EventsPage'
@@ -14,16 +15,15 @@ import JudgesPage from './pages/JudgesPage'
 import LoginPage from './pages/LoginPage'
 import ScoringPage from './pages/ScoringPage'
 
+function managerHome(role: string) {
+  return role === 'judge' ? '/judge/events' : '/events'
+}
+
 function HomeRedirect() {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
-  return (
-    <Navigate
-      to={user.role === 'admin' ? '/events' : '/judge/events'}
-      replace
-    />
-  )
+  return <Navigate to={managerHome(user.role)} replace />
 }
 
 function App() {
@@ -33,10 +33,9 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
-          <Route element={<ProtectedRoute adminOnly />}>
+          <Route element={<ProtectedRoute managerOnly />}>
             <Route element={<AppLayout />}>
               <Route path="/events" element={<EventsPage />} />
-              <Route path="/judges" element={<JudgesPage />} />
               <Route
                 path="/events/:eventId/competitors"
                 element={<CompetitorsPage />}
@@ -49,6 +48,13 @@ function App() {
                 path="/events/:eventId/divisions/:divisionId/status"
                 element={<DivisionStatusPage />}
               />
+            </Route>
+          </Route>
+
+          <Route element={<ProtectedRoute adminOnly />}>
+            <Route element={<AppLayout />}>
+              <Route path="/judges" element={<JudgesPage />} />
+              <Route path="/coordinators" element={<CoordinatorsPage />} />
             </Route>
           </Route>
 

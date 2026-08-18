@@ -3,7 +3,7 @@ export type SessionUser = {
   email: string
   firstName: string
   lastName: string
-  role: 'admin' | 'judge'
+  role: 'admin' | 'judge' | 'coordinator'
 }
 
 export type Event = {
@@ -50,6 +50,14 @@ export type DivisionPair = {
 }
 
 export type Judge = {
+  id: string
+  email: string
+  firstName: string
+  lastName: string
+  events: Array<{ id: string; name?: string }>
+}
+
+export type Coordinator = {
   id: string
   email: string
   firstName: string

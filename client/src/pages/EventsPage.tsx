@@ -16,9 +16,11 @@ import {
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, type Event } from '../api/client'
+import { useAuth } from '../context/auth'
 
 export default function EventsPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [events, setEvents] = useState<Event[]>([])
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -52,11 +54,19 @@ export default function EventsPage() {
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5" component="h1">Events</Typography>
-        <Button variant="contained" onClick={() => setOpen(true)}>Create event</Button>
+        {user?.role === 'admin' && (
+          <Button variant="contained" onClick={() => setOpen(true)}>
+            Create event
+          </Button>
+        )}
       </Box>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {!events.length && !error && (
-        <Typography color="text.secondary">No events yet. Create one to begin.</Typography>
+        <Typography color="text.secondary">
+          {user?.role === 'admin'
+            ? 'No events yet. Create one to begin.'
+            : 'No events assigned yet.'}
+        </Typography>
       )}
       <Stack spacing={2}>
         {events.map((event) => (

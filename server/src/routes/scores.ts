@@ -520,7 +520,9 @@ export async function scoreRoutes(app: FastifyInstance) {
 
       const assignedJudgeIds = new Set(assignedJudges.map((judge) => judge.id))
       const showNames =
-        request.user.role === 'admin' || division.showCompetitorNames
+        request.user.role === 'admin' ||
+        request.user.role === 'coordinator' ||
+        division.showCompetitorNames
       const judgeStatuses = assignedJudges.map((judge) => {
         const submission = submissions.find(
           (item) => item.judgeId === judge.id,

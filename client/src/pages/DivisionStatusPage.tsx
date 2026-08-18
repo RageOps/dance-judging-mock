@@ -203,9 +203,9 @@ export default function DivisionStatusPage() {
       <Button
         onClick={() =>
           navigate(
-            user?.role === 'admin'
-              ? `/events/${eventId}/divisions`
-              : `/judge/events/${eventId}/divisions`,
+            user?.role === 'judge'
+              ? `/judge/events/${eventId}/divisions`
+              : `/events/${eventId}/divisions`,
           )
         }
         sx={{ mb: 1 }}

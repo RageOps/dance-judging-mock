@@ -12,6 +12,7 @@ local and production environments.
 - Jack & Jill and Strictly divisions
 - Lead/follow assignments for competitors in each division
 - Admin-managed judge profiles with multi-event assignments
+- Competition coordinator accounts with event-scoped management access
 - Persistent 1–10 judge scoring with save, lock, edit, and revision protection
 - Lead/follow/both judging scopes, optional name hiding, and provisional status
 
@@ -63,6 +64,27 @@ Event access is checked against the database on every request, so assignment
 changes take effect without requiring the judge to sign in again. Division
 registrations cannot be changed after scoring begins, protecting completed
 judge sheets from roster changes.
+
+## Competition coordinators
+
+Administrators create coordinator accounts and assign them to one or more
+events. Coordinators use the same event management UI as administrators for
+their assigned events only:
+
+- View assigned events and open competitors, divisions, pairs, and division
+  status
+- Create and update competitors, divisions, registrations, and strictly pairs
+- See competitor names on division status regardless of the division's name
+  visibility setting
+
+Coordinators cannot create events, manage judges, or manage other coordinators.
+Those actions remain administrator-only.
+
+1. Sign in as an administrator and open **Coordinators**.
+2. Create the coordinator profile with their name, email, an initial password,
+   and one or more assigned events.
+3. Share the initial password securely with the coordinator.
+4. The coordinator signs in and manages only the events assigned to them.
 
 ## Strictly pair scoring
 

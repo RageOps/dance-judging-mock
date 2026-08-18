@@ -1,14 +1,17 @@
 import { and, eq } from 'drizzle-orm'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { db } from '../db/client.js'
-import { judgeEventAssignments } from '../db/schema.js'
+import {
+  coordinatorEventAssignments,
+  judgeEventAssignments,
+} from '../db/schema.js'
 
 export type AuthUser = {
   id: string
   email: string
   firstName: string
   lastName: string
-  role: 'admin' | 'judge'
+  role: 'admin' | 'judge' | 'coordinator'
 }
 
 declare module '@fastify/jwt' {
@@ -40,8 +43,32 @@ export async function requireAdmin(
   }
 }
 
+export async function requireEventManager(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  await requireAuth(request, reply)
+  if (reply.sent) return
+  if (request.user.role !== 'admin' && request.user.role !== 'coordinator') {
+    return reply.code(403).send({ message: 'Event manager access required' })
+  }
+}
+
 export async function hasEventAccess(request: FastifyRequest, eventId: string) {
   if (request.user.role === 'admin') return true
+  if (request.user.role === 'coordinator') {
+    const [assignment] = await db
+      .select({ eventId: coordinatorEventAssignments.eventId })
+      .from(coordinatorEventAssignments)
+      .where(
+        and(
+          eq(coordinatorEventAssignments.coordinatorId, request.user.id),
+          eq(coordinatorEventAssignments.eventId, eventId),
+        ),
+      )
+      .limit(1)
+    return Boolean(assignment)
+  }
   const [assignment] = await db
     .select({ eventId: judgeEventAssignments.eventId })
     .from(judgeEventAssignments)
@@ -65,4 +92,14 @@ export async function requireEventAccess(
     return false
   }
   return true
+}
+
+export async function requireEventManagerAccess(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  eventId: string,
+) {
+  await requireEventManager(request, reply)
+  if (reply.sent) return false
+  return requireEventAccess(request, reply, eventId)
 }

@@ -10,7 +10,7 @@ import { Outlet, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/auth'
 
 export default function AppLayout() {
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
   const navigate = useNavigate()
   const { eventId } = useParams()
 
@@ -27,9 +27,16 @@ export default function AppLayout() {
           <Button color="inherit" onClick={() => navigate('/events')}>
             Events
           </Button>
-          <Button color="inherit" onClick={() => navigate('/judges')}>
-            Judges
-          </Button>
+          {user?.role === 'admin' && (
+            <>
+              <Button color="inherit" onClick={() => navigate('/judges')}>
+                Judges
+              </Button>
+              <Button color="inherit" onClick={() => navigate('/coordinators')}>
+                Coordinators
+              </Button>
+            </>
+          )}
           <Button
             color="inherit"
             onClick={async () => {

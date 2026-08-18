@@ -3,6 +3,10 @@ import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/auth'
 
+function managerHome(role: string) {
+  return role === 'judge' ? '/judge/events' : '/events'
+}
+
 export default function LoginPage() {
   const { user, login } = useAuth()
   const navigate = useNavigate()
@@ -12,12 +16,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
 
   if (user) {
-    return (
-      <Navigate
-        to={user.role === 'admin' ? '/events' : '/judge/events'}
-        replace
-      />
-    )
+    return <Navigate to={managerHome(user.role)} replace />
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -26,7 +25,7 @@ export default function LoginPage() {
     setError('')
     try {
       const session = await login(email, password)
-      navigate(session.role === 'admin' ? '/events' : '/judge/events')
+      navigate(managerHome(session.role))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to log in')
     } finally {

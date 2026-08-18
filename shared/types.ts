@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'judge'
+export type UserRole = 'admin' | 'judge' | 'coordinator'
 export type DivisionType = 'jack_and_jill' | 'strictly'
 export type DancerRole = 'lead' | 'follow'
 
@@ -36,6 +36,14 @@ export type Division = {
 }
 
 export type Judge = {
+  id: string
+  email: string
+  firstName: string
+  lastName: string
+  events: Array<{ id: string; name: string }>
+}
+
+export type Coordinator = {
   id: string
   email: string
   firstName: string

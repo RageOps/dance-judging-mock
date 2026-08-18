@@ -4,10 +4,12 @@ import { sql } from '../db/client.js'
 const baseUrl = process.env.TEST_BASE_URL ?? 'http://web'
 const suffix = Date.now().toString()
 const judgeEmail = `judge-integration-${suffix}@example.com`
+const coordinatorEmail = `coordinator-integration-${suffix}@example.com`
 const eventPrefix = `Integration ${suffix}`
 
 let adminCookie = ''
 let judgeCookie = ''
+let coordinatorCookie = ''
 
 async function request<T>(
   path: string,
@@ -413,9 +415,70 @@ try {
     throw new Error('Administrator strictly status did not include pair first names')
   }
 
+  await request('/coordinators', {
+    method: 'POST',
+    body: JSON.stringify({
+      firstName: 'Integration',
+      lastName: 'Coordinator',
+      email: coordinatorEmail,
+      password: 'integration-password',
+      eventIds: [eventA.id],
+    }),
+  })
+
+  coordinatorCookie = await login(coordinatorEmail, 'integration-password')
+
+  const coordinatorEvents = await request<Array<{ id: string }>>(
+    '/events',
+    {},
+    coordinatorCookie,
+  )
+  if (coordinatorEvents.length !== 1 || coordinatorEvents[0]?.id !== eventA.id) {
+    throw new Error('Coordinator event list was not scoped to assignments')
+  }
+
+  await request(
+    `/events/${eventA.id}/competitors`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ firstName: 'Coord', lastName: 'Managed' }),
+    },
+    coordinatorCookie,
+  )
+
+  await expectStatus(
+    '/events',
+    403,
+    { method: 'POST', body: JSON.stringify({ name: 'Blocked event' }) },
+    coordinatorCookie,
+  )
+  await expectStatus('/judges', 403, {}, coordinatorCookie)
+  await expectStatus('/coordinators', 403, {}, coordinatorCookie)
+  await expectStatus(
+    `/events/${eventB.id}/competitors`,
+    403,
+    {
+      method: 'POST',
+      body: JSON.stringify({ firstName: 'Blocked', lastName: 'Competitor' }),
+    },
+    coordinatorCookie,
+  )
+
+  const coordinatorStatus = await request<{
+    preliminaryResults: { leads: Array<{ firstName?: string }> }
+  }>(
+    `/events/${eventA.id}/divisions/${division.id}/status`,
+    {},
+    coordinatorCookie,
+  )
+  if (coordinatorStatus.preliminaryResults.leads[0]?.firstName !== 'Integration') {
+    throw new Error('Coordinator status did not include competitor names')
+  }
+
   console.log('Judge integration flow passed')
 } finally {
   await sql`delete from users where email = ${judgeEmail}`
+  await sql`delete from users where email = ${coordinatorEmail}`
   await sql`delete from events where name like ${`${eventPrefix}%`}`
   await sql.end()
 }
