@@ -417,6 +417,10 @@ export default function DivisionsPage() {
         </CardContent>
       </Card>
 
+      <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
+        Manage Divisions
+      </Typography>
+
       {divisions.map((division) => (
         <Accordion key={division.id}>
           <AccordionSummary>
