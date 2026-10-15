@@ -15,6 +15,7 @@ import {
   events,
   heatEntries,
   heats,
+  judgeEventAssignments,
   placements,
   roundSubmissions,
   scores,
@@ -312,7 +313,7 @@ export function buildApp() {
     { preHandler: requireAuth },
     async (request, reply) => {
       if (!(await requireEventAccess(request, reply, request.params.eventId))) return
-      return db
+      const divisionRows = await db
         .select({
           id: divisions.id,
           eventId: divisions.eventId,
@@ -320,6 +321,7 @@ export function buildApp() {
           type: divisions.type,
           scoringMode: divisions.scoringMode,
           showCompetitorNames: divisions.showCompetitorNames,
+          lineUpCheckInCompletedAt: divisions.lineUpCheckInCompletedAt,
           createdAt: divisions.createdAt,
           registrationCount: count(divisionRegistrations.competitorId),
         })
@@ -331,6 +333,70 @@ export function buildApp() {
         .where(eq(divisions.eventId, request.params.eventId))
         .groupBy(divisions.id)
         .orderBy(asc(divisions.createdAt))
+
+      const assignedJudgeIds = new Set(
+        (
+          await db
+            .select({ judgeId: judgeEventAssignments.judgeId })
+            .from(judgeEventAssignments)
+            .where(eq(judgeEventAssignments.eventId, request.params.eventId))
+        ).map((row) => row.judgeId),
+      )
+      const submissionRows = await db
+        .select({
+          divisionId: scoreSubmissions.divisionId,
+          judgeId: scoreSubmissions.judgeId,
+          status: scoreSubmissions.status,
+        })
+        .from(scoreSubmissions)
+        .innerJoin(divisions, eq(divisions.id, scoreSubmissions.divisionId))
+        .where(eq(divisions.eventId, request.params.eventId))
+      const roundRows = await db
+        .select({
+          divisionId: divisionRounds.divisionId,
+          status: divisionRounds.status,
+        })
+        .from(divisionRounds)
+        .innerJoin(divisions, eq(divisions.id, divisionRounds.divisionId))
+        .where(eq(divisions.eventId, request.params.eventId))
+
+      const hasSubmissions = new Set(
+        submissionRows.map((row) => row.divisionId),
+      )
+      const lockedByDivision = new Map<string, Set<string>>()
+      for (const row of submissionRows) {
+        if (row.status !== 'locked' || !assignedJudgeIds.has(row.judgeId)) {
+          continue
+        }
+        const locked = lockedByDivision.get(row.divisionId) ?? new Set<string>()
+        locked.add(row.judgeId)
+        lockedByDivision.set(row.divisionId, locked)
+      }
+
+      return divisionRows.map((row) => {
+        let judgingStatus: 'not_started' | 'in_progress' | 'completed'
+        if (row.scoringMode === 'rounds') {
+          const rounds = roundRows.filter(
+            (round) => round.divisionId === row.id,
+          )
+          judgingStatus =
+            rounds.length > 0 &&
+            rounds.every((round) => round.status === 'complete')
+              ? 'completed'
+              : rounds.some((round) => round.status !== 'pending')
+                ? 'in_progress'
+                : 'not_started'
+        } else {
+          const locked = lockedByDivision.get(row.id)
+          judgingStatus = !hasSubmissions.has(row.id)
+            ? 'not_started'
+            : assignedJudgeIds.size > 0 &&
+                [...assignedJudgeIds].every((id) => locked?.has(id))
+              ? 'completed'
+              : 'in_progress'
+        }
+        return { ...row, judgingStatus }
+      })
     },
   )
 
@@ -385,6 +451,10 @@ export function buildApp() {
         typeof body.showCompetitorNames === 'boolean'
           ? body.showCompetitorNames
           : undefined
+      const lineUpCheckInComplete =
+        typeof body.lineUpCheckInComplete === 'boolean'
+          ? body.lineUpCheckInComplete
+          : undefined
       if (!name || !type) {
         return reply.code(400).send({ message: 'Valid name and type are required' })
       }
@@ -395,6 +465,13 @@ export function buildApp() {
           type,
           ...(scoringMode === undefined ? {} : { scoringMode }),
           ...(showCompetitorNames === undefined ? {} : { showCompetitorNames }),
+          ...(lineUpCheckInComplete === undefined
+            ? {}
+            : {
+                lineUpCheckInCompletedAt: lineUpCheckInComplete
+                  ? new Date()
+                  : null,
+              }),
         })
         .where(
           and(
@@ -580,6 +657,11 @@ export function buildApp() {
         )
         .limit(1)
       if (!division) return reply.code(404).send({ message: 'Division not found' })
+      if (division.lineUpCheckInCompletedAt) {
+        return reply
+          .code(409)
+          .send({ message: 'Line up check-in is already complete' })
+      }
 
       const registered = await db
         .select({ competitorId: divisionRegistrations.competitorId })
@@ -629,6 +711,11 @@ export function buildApp() {
         )
         .limit(1)
       if (!division) return reply.code(404).send({ message: 'Division not found' })
+      if (division.lineUpCheckInCompletedAt) {
+        return reply
+          .code(409)
+          .send({ message: 'Line up check-in is already complete' })
+      }
 
       const scratched = await db.transaction(async (tx) => {
         const [deleted] = await tx

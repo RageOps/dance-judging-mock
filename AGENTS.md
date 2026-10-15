@@ -28,7 +28,16 @@
 - `PUT /api/events/:eventId/divisions/:divisionId/check-in` — body `{ competitorIds }`
   replaces the checked-in set (sets `checked_in_at = now()` for listed, clears the rest).
   Requires event-manager access (admin or assigned coordinator). Allowed even after
-  scoring has started.
+  scoring has started. Returns 409 once line-up check-in is marked complete.
+- `divisions.line_up_check_in_completed_at` (timestamptz, nullable) locks the
+  line-up check-in page when set. Migration: `server/drizzle/0010_line-up-check-in.sql`.
+  Toggled via `PATCH /api/events/:eventId/divisions/:id` with
+  `{ name, type, lineUpCheckInComplete }`. Also blocks the scratch DELETE
+  (reopen check-in to scratch a late no-show).
+- `GET /api/events/:eventId/divisions` returns `lineUpCheckInCompletedAt` and a
+  computed `judgingStatus` (`not_started`/`in_progress`/`completed`): for rounds
+  divisions from `division_rounds.status`; for numeric divisions, completed when
+  every assigned event judge has a locked `score_submissions` row.
 - `DELETE /api/events/:eventId/divisions/:divisionId/registrations/:competitorId` —
   "scratch": deletes the registration, any `division_pairs` rows involving the
   competitor, and that competitor's `scores` rows in the division. Intentionally

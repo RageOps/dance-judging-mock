@@ -1,0 +1,1 @@
+ALTER TABLE "divisions" ADD COLUMN "line_up_check_in_completed_at" timestamp with time zone;

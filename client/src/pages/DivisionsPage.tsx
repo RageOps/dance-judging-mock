@@ -42,6 +42,15 @@ import {
 
 type Role = 'lead' | 'follow'
 
+const judgingStatusChip: Record<
+  Division['judgingStatus'],
+  { label: string; color: 'default' | 'warning' | 'success' }
+> = {
+  not_started: { label: 'Judging not started', color: 'default' },
+  in_progress: { label: 'Judging in progress', color: 'warning' },
+  completed: { label: 'Judging complete', color: 'success' },
+}
+
 function DivisionPairings({
   eventId,
   division,
@@ -338,7 +347,10 @@ export default function DivisionsPage() {
         method: 'POST',
         body: JSON.stringify({ name, type, scoringMode, showCompetitorNames }),
       })
-      setDivisions((current) => [...current, { ...created, registrationCount: 0 }])
+      setDivisions((current) => [
+        ...current,
+        { ...created, registrationCount: 0, judgingStatus: 'not_started' },
+      ])
       setName('')
       setShowCompetitorNames(true)
       setDialogOpen(false)
@@ -486,6 +498,19 @@ export default function DivisionsPage() {
                 size="small"
                 variant="outlined"
                 label={division.scoringMode === 'rounds' ? 'Rounds' : 'Numeric'}
+              />
+              {division.lineUpCheckInCompletedAt && (
+                <Chip
+                  size="small"
+                  color="success"
+                  label="Check-in complete"
+                />
+              )}
+              <Chip
+                size="small"
+                variant="outlined"
+                color={judgingStatusChip[division.judgingStatus].color}
+                label={judgingStatusChip[division.judgingStatus].label}
               />
               <Chip size="small" variant="outlined" label={division.registrationCount} />
             </Box>

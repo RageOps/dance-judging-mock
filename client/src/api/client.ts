@@ -30,6 +30,8 @@ export type Competitor = {
   divisions?: CompetitorDivision[]
 }
 
+export type JudgingStatus = 'not_started' | 'in_progress' | 'completed'
+
 export type Division = {
   id: string
   eventId: string
@@ -37,6 +39,8 @@ export type Division = {
   type: 'jack_and_jill' | 'strictly'
   scoringMode: 'numeric' | 'rounds'
   showCompetitorNames: boolean
+  lineUpCheckInCompletedAt: string | null
+  judgingStatus: JudgingStatus
   registrationCount: number
 }
 

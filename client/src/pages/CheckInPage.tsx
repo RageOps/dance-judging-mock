@@ -67,6 +67,32 @@ export default function CheckInPage() {
     (registration) => registration.checkedInAt,
   ).length
   const uncheckedCount = lineUp.length - lineUpCheckedIn
+  const checkInComplete = Boolean(division?.lineUpCheckInCompletedAt)
+
+  async function setCheckInComplete(complete: boolean) {
+    if (!division) return
+    setError('')
+    try {
+      const updated = await api<Division>(
+        `/events/${eventId}/divisions/${division.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: division.name,
+            type: division.type,
+            lineUpCheckInComplete: complete,
+          }),
+        },
+      )
+      setDivision(updated)
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : 'Unable to update check-in status',
+      )
+    }
+  }
 
   async function saveCheckIn(ids: Set<string>) {
     setError('')
@@ -163,21 +189,41 @@ export default function CheckInPage() {
         to remove them from this division.
       </Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          mb: 2,
+          flexWrap: 'wrap',
+        }}
+      >
         <Chip
           label={`${lineUpCheckedIn} checked in`}
           color="primary"
           variant="outlined"
         />
         <Chip label={`${uncheckedCount} pending`} variant="outlined" />
+        {checkInComplete && (
+          <Chip label="Check-in complete" color="success" />
+        )}
         <Box sx={{ flexGrow: 1 }} />
+        {!checkInComplete && (
+          <Button
+            color="error"
+            variant="outlined"
+            disabled={!uncheckedCount}
+            onClick={() => setConfirmUnchecked(true)}
+          >
+            Scratch unchecked
+          </Button>
+        )}
         <Button
-          color="error"
-          variant="outlined"
-          disabled={!uncheckedCount}
-          onClick={() => setConfirmUnchecked(true)}
+          variant={checkInComplete ? 'outlined' : 'contained'}
+          disabled={!division}
+          onClick={() => void setCheckInComplete(!checkInComplete)}
         >
-          Scratch unchecked
+          {checkInComplete ? 'Reopen check-in' : 'Complete check-in'}
         </Button>
       </Box>
       {notAtFrontDesk > 0 && (
@@ -201,6 +247,7 @@ export default function CheckInPage() {
               <Button
                 color="error"
                 size="small"
+                disabled={checkInComplete}
                 onClick={() => setScratchTarget(registration)}
               >
                 Scratch
@@ -209,10 +256,12 @@ export default function CheckInPage() {
           >
             <ListItemButton
               onClick={() => toggle(registration)}
+              disabled={checkInComplete}
               sx={{ pr: 12 }}
             >
               <Checkbox
                 checked={checkedInIds.has(registration.competitorId)}
+                disabled={checkInComplete}
                 tabIndex={-1}
                 disableRipple
               />
