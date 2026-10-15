@@ -10,6 +10,10 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
   List,
@@ -494,6 +498,7 @@ export default function RoundsPage() {
   const [roundType, setRoundType] = useState<RoundType>('callback')
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -550,6 +555,7 @@ export default function RoundsPage() {
         body: JSON.stringify({ name, type: roundType }),
       })
       setName('')
+      setDialogOpen(false)
       await load()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to create round')
@@ -563,6 +569,35 @@ export default function RoundsPage() {
       </Box>
     )
   }
+
+  const roundFormFields = (
+    <>
+      <TextField
+        label="Round name"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        required
+      />
+      <FormControl>
+        <InputLabel id="round-type-label">Scoring</InputLabel>
+        <Select
+          labelId="round-type-label"
+          label="Scoring"
+          value={roundType}
+          onChange={(event) =>
+            setRoundType(event.target.value as RoundType)
+          }
+        >
+          <MenuItem value="callback">
+            Callback (yes / alternate / no)
+          </MenuItem>
+          <MenuItem value="relative_placement">
+            Final — relative placement (rank 1–N)
+          </MenuItem>
+        </Select>
+      </FormControl>
+    </>
+  )
 
   return (
     <>
@@ -581,42 +616,31 @@ export default function RoundsPage() {
       </Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <Card variant="outlined" sx={{ mb: 3 }}>
-        <CardContent>
-          <Stack component="form" onSubmit={createRound} spacing={2}>
-            <TextField
-              label="Round name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-            />
-            <FormControl>
-              <InputLabel id="round-type-label">Scoring</InputLabel>
-              <Select
-                labelId="round-type-label"
-                label="Scoring"
-                value={roundType}
-                onChange={(event) =>
-                  setRoundType(event.target.value as RoundType)
-                }
-              >
-                <MenuItem value="callback">
-                  Callback (yes / alternate / no)
-                </MenuItem>
-                <MenuItem value="relative_placement">
-                  Final — relative placement (rank 1–N)
-                </MenuItem>
-              </Select>
-            </FormControl>
-            <Button type="submit" variant="contained" size="large">
-              Add round
-            </Button>
-          </Stack>
-        </CardContent>
-      </Card>
+      {!rounds.length && (
+        <Card variant="outlined" sx={{ mb: 3 }}>
+          <CardContent>
+            <Stack component="form" onSubmit={createRound} spacing={2}>
+              {roundFormFields}
+              <Button type="submit" variant="contained" size="large">
+                Add round
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {rounds.length > 0 && (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+          <Button variant="contained" onClick={() => setDialogOpen(true)}>
+            Add round
+          </Button>
+        </Box>
+      )}
 
       {!rounds.length && (
-        <Alert severity="info">No rounds yet for this division.</Alert>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          No rounds yet for this division.
+        </Alert>
       )}
       {division &&
         rounds.map((round, index) => (
@@ -630,6 +654,27 @@ export default function RoundsPage() {
             onChanged={() => void load()}
           />
         ))}
+
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        fullWidth
+      >
+        <form onSubmit={createRound}>
+          <DialogTitle>Add round</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              {roundFormFields}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="contained">
+              Add round
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
     </>
   )
 }

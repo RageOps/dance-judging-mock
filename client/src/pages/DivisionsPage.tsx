@@ -9,6 +9,10 @@ import {
   CardContent,
   Checkbox,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   FormControlLabel,
   InputLabel,
@@ -302,6 +306,8 @@ export default function DivisionsPage() {
   const [scoringMode, setScoringMode] = useState<'numeric' | 'rounds'>('numeric')
   const [showCompetitorNames, setShowCompetitorNames] = useState(true)
   const [error, setError] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [pairingsVersion, setPairingsVersion] = useState(0)
 
   const load = useCallback(async () => {
@@ -314,6 +320,7 @@ export default function DivisionsPage() {
       setEvent(eventResult)
       setCompetitors(competitorResult)
       setDivisions(divisionResult)
+      setLoaded(true)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to load divisions')
     }
@@ -334,6 +341,7 @@ export default function DivisionsPage() {
       setDivisions((current) => [...current, { ...created, registrationCount: 0 }])
       setName('')
       setShowCompetitorNames(true)
+      setDialogOpen(false)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to create division')
     }
@@ -369,6 +377,61 @@ export default function DivisionsPage() {
     }
   }
 
+  const divisionFormFields = (
+    <>
+      <TextField
+        label="Division name"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        required
+      />
+      <FormControl>
+        <InputLabel id="division-type-label">Division type</InputLabel>
+        <Select
+          labelId="division-type-label"
+          label="Division type"
+          value={type}
+          onChange={(event) =>
+            setType(event.target.value as 'jack_and_jill' | 'strictly')
+          }
+        >
+          <MenuItem value="jack_and_jill">Jack & Jill</MenuItem>
+          <MenuItem value="strictly">Strictly</MenuItem>
+        </Select>
+      </FormControl>
+      <FormControl>
+        <InputLabel id="division-scoring-label">Scoring</InputLabel>
+        <Select
+          labelId="division-scoring-label"
+          label="Scoring"
+          value={scoringMode}
+          onChange={(event) =>
+            setScoringMode(event.target.value as 'numeric' | 'rounds')
+          }
+        >
+          <MenuItem value="numeric">Numeric (1–10)</MenuItem>
+          <MenuItem value="rounds">
+            Rounds (callback + relative placement)
+          </MenuItem>
+        </Select>
+      </FormControl>
+      <FormControlLabel
+        control={
+          <Switch
+            checked={showCompetitorNames}
+            onChange={(event) =>
+              setShowCompetitorNames(event.target.checked)
+            }
+          />
+        }
+        label="Show competitor names to judges"
+      />
+      <Typography variant="body2" color="text.secondary">
+        When disabled, judges see only bib numbers and lead/follow roles.
+      </Typography>
+    </>
+  )
+
   return (
     <>
       <Typography variant="h5" component="h1" sx={{ mb: 3 }}>
@@ -376,67 +439,36 @@ export default function DivisionsPage() {
       </Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <Card variant="outlined" sx={{ mb: 3 }}>
-        <CardContent>
-          <Stack component="form" onSubmit={createDivision} spacing={2}>
-            <TextField
-              label="Division name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-            />
-            <FormControl>
-              <InputLabel id="division-type-label">Division type</InputLabel>
-              <Select
-                labelId="division-type-label"
-                label="Division type"
-                value={type}
-                onChange={(event) =>
-                  setType(event.target.value as 'jack_and_jill' | 'strictly')
-                }
-              >
-                <MenuItem value="jack_and_jill">Jack & Jill</MenuItem>
-                <MenuItem value="strictly">Strictly</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl>
-              <InputLabel id="division-scoring-label">Scoring</InputLabel>
-              <Select
-                labelId="division-scoring-label"
-                label="Scoring"
-                value={scoringMode}
-                onChange={(event) =>
-                  setScoringMode(event.target.value as 'numeric' | 'rounds')
-                }
-              >
-                <MenuItem value="numeric">Numeric (1–10)</MenuItem>
-                <MenuItem value="rounds">
-                  Rounds (callback + relative placement)
-                </MenuItem>
-              </Select>
-            </FormControl>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={showCompetitorNames}
-                  onChange={(event) =>
-                    setShowCompetitorNames(event.target.checked)
-                  }
-                />
-              }
-              label="Show competitor names to judges"
-            />
-            <Typography variant="body2" color="text.secondary">
-              When disabled, judges see only bib numbers and lead/follow roles.
-            </Typography>
-            <Button type="submit" variant="contained" size="large">Create division</Button>
-          </Stack>
-        </CardContent>
-      </Card>
+      {loaded && !divisions.length && (
+        <Card variant="outlined" sx={{ mb: 3 }}>
+          <CardContent>
+            <Stack component="form" onSubmit={createDivision} spacing={2}>
+              {divisionFormFields}
+              <Button type="submit" variant="contained" size="large">
+                Create division
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
 
-      <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-        Manage Divisions
-      </Typography>
+      {divisions.length > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            mb: 2,
+          }}
+        >
+          <Typography variant="h6" component="h2">
+            Manage Divisions
+          </Typography>
+          <Button variant="contained" onClick={() => setDialogOpen(true)}>
+            New division
+          </Button>
+        </Box>
+      )}
 
       {divisions.map((division) => (
         <Accordion key={division.id}>
@@ -535,6 +567,27 @@ export default function DivisionsPage() {
           </AccordionDetails>
         </Accordion>
       ))}
+
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        fullWidth
+      >
+        <form onSubmit={createDivision}>
+          <DialogTitle>New division</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              {divisionFormFields}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="contained">
+              Create division
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
     </>
   )
 }
