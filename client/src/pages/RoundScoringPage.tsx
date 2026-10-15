@@ -7,9 +7,12 @@ import {
   Chip,
   CircularProgress,
   FormControl,
+  IconButton,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
+  Slider,
   Stack,
   ToggleButton,
   ToggleButtonGroup,
@@ -42,6 +45,7 @@ export default function RoundScoringPage() {
   const navigate = useNavigate()
   const [sheet, setSheet] = useState<RoundSheet | null>(null)
   const [marks, setMarks] = useState<Record<string, CallbackVote | number>>({})
+  const [impressions, setImpressions] = useState<Record<string, number>>({})
   const [scope, setScope] = useState<Scope>('both')
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -55,12 +59,17 @@ export default function RoundScoringPage() {
       setSheet(result)
       setScope(result.scope)
       const next: Record<string, CallbackVote | number> = {}
+      const nextImpressions: Record<string, number> = {}
       for (const heat of result.heats) {
         for (const entry of heat.entries) {
           if (entry.mark !== null) next[entry.competitorId] = entry.mark
+          if (entry.impression !== null) {
+            nextImpressions[entry.competitorId] = entry.impression
+          }
         }
       }
       setMarks(next)
+      setImpressions(nextImpressions)
       setDirty(false)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to load round')
@@ -100,6 +109,9 @@ export default function RoundScoringPage() {
           method: 'PUT',
           body: JSON.stringify({
             expectedRevision: sheet.revision,
+            impressions: Object.entries(impressions).map(
+              ([competitorId, score]) => ({ competitorId, score }),
+            ),
             ...(sheet.division.type === 'strictly' ? {} : { scope }),
             ...(isCallback
               ? {
@@ -145,6 +157,12 @@ export default function RoundScoringPage() {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to edit')
     }
+  }
+
+  function setImpression(competitorId: string, value: number) {
+    const clamped = Math.min(10, Math.max(1, Math.round(value * 2) / 2))
+    setImpressions((current) => ({ ...current, [competitorId]: clamped }))
+    setDirty(true)
   }
 
   function goBack() {
@@ -350,6 +368,77 @@ export default function RoundScoringPage() {
                         </Select>
                       </FormControl>
                     )}
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        flexBasis: '100%',
+                      }}
+                    >
+                      <IconButton
+                        size="small"
+                        aria-label="Decrease impression score"
+                        disabled={
+                          locked ||
+                          (impressions[entry.competitorId] ?? 5.5) <= 1
+                        }
+                        onClick={() =>
+                          setImpression(
+                            entry.competitorId,
+                            (impressions[entry.competitorId] ?? 5.5) - 0.5,
+                          )
+                        }
+                      >
+                        −
+                      </IconButton>
+                      <Slider
+                        value={impressions[entry.competitorId] ?? 5.5}
+                        min={1}
+                        max={10}
+                        step={0.5}
+                        disabled={locked}
+                        aria-label={`Impression for ${entryName(entry)}`}
+                        onChange={(_event, value) =>
+                          setImpression(entry.competitorId, value as number)
+                        }
+                        sx={{ flex: 1, minWidth: 0 }}
+                      />
+                      <IconButton
+                        size="small"
+                        aria-label="Increase impression score"
+                        disabled={
+                          locked ||
+                          (impressions[entry.competitorId] ?? 5.5) >= 10
+                        }
+                        onClick={() =>
+                          setImpression(
+                            entry.competitorId,
+                            (impressions[entry.competitorId] ?? 5.5) + 0.5,
+                          )
+                        }
+                      >
+                        +
+                      </IconButton>
+                      <Paper
+                        variant="outlined"
+                        sx={{
+                          width: 48,
+                          height: 48,
+                          minWidth: 48,
+                          display: 'grid',
+                          placeItems: 'center',
+                          flexShrink: 0,
+                          fontWeight: 700,
+                          fontVariantNumeric: 'tabular-nums',
+                          bgcolor: locked
+                            ? 'action.disabledBackground'
+                            : 'background.paper',
+                        }}
+                      >
+                        {impressions[entry.competitorId]?.toFixed(1) ?? '—'}
+                      </Paper>
+                    </Box>
                   </CardContent>
                 </Card>
               ))}

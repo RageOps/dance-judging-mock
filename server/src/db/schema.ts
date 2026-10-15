@@ -196,7 +196,7 @@ export const scores = pgTable(
     competitorId: uuid('competitor_id')
       .notNull()
       .references(() => competitors.id, { onDelete: 'cascade' }),
-    score: integer('score').notNull(),
+    score: real('score').notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -251,6 +251,8 @@ export const heatEntries = pgTable(
       .references(() => heats.id, { onDelete: 'cascade' }),
     competitorId: uuid('competitor_id')
       .notNull()
+      .references(() => competitors.id, { onDelete: 'cascade' }),
+    followCompetitorId: uuid('follow_competitor_id')
       .references(() => competitors.id, { onDelete: 'cascade' }),
   },
   (table) => [primaryKey({ columns: [table.heatId, table.competitorId] })],

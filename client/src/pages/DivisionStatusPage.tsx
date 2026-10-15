@@ -16,14 +16,15 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   api,
+  type CallbackVote,
   type DivisionJudgeStatus,
   type DivisionRound,
   type DivisionStatus,
-  type PreliminaryPairResult,
-  type PreliminaryResult,
   type RoundResults,
 } from '../api/client'
 import { useAuth } from '../context/auth'
+import JudgeScoreTable from '../components/JudgeScoreTable'
+import { judgeLabel } from '../utils/format'
 
 function scopeLabel(
   scope: DivisionJudgeStatus['scope'],
@@ -96,81 +97,144 @@ function JudgeList({
   )
 }
 
-function PairResultsList({ results }: { results: PreliminaryPairResult[] }) {
+function resultRowLabel(row: {
+  bibNumber: number
+  firstName?: string
+  lastName?: string
+  followBibNumber?: number
+  followFirstName?: string
+}) {
+  const name = row.firstName ? ` ${row.firstName} ${row.lastName ?? ''}` : ''
+  const follow = row.followBibNumber
+    ? ` & #${row.followBibNumber}${row.followFirstName ? ` ${row.followFirstName}` : ''}`
+    : ''
+  return `#${row.bibNumber}${name}${follow}`
+}
+
+function RoundResultsTable({
+  results,
+  type,
+}: {
+  results: RoundResults
+  type: DivisionRound['type']
+}) {
+  const judges = results.judges.submitted.map((judge) => ({
+    id: judge.id,
+    label: judgeLabel(judge),
+    isHead: judge.isHead,
+  }))
+  const voteBallots = new Map(
+    (results.results.voteBallots ?? []).map((ballot) => [
+      ballot.judgeId,
+      ballot.votes,
+    ]),
+  )
+  const rankBallots = new Map(
+    (results.results.ballots ?? []).map((ballot) => [
+      ballot.judgeId,
+      ballot.ranks,
+    ]),
+  )
+  const voteMark = (vote?: CallbackVote) =>
+    vote === 'yes'
+      ? 'Y'
+      : vote === 'alternate'
+        ? 'A'
+        : vote === 'no'
+          ? 'N'
+          : undefined
+
+  if (type === 'callback') {
+    const groups = [
+      { title: 'Leads', rows: results.results.leads ?? [] },
+      { title: 'Follows', rows: results.results.follows ?? [] },
+      { title: 'Entries', rows: results.results.entries ?? [] },
+    ].filter((group) => group.rows.length)
+    if (!groups.length) {
+      return (
+        <Typography color="text.secondary">No locked ballots yet.</Typography>
+      )
+    }
+    return (
+      <Stack spacing={2}>
+        {groups.map((group) => (
+          <Box key={group.title}>
+            {groups.length > 1 && (
+              <Typography variant="subtitle2">{group.title}</Typography>
+            )}
+            <JudgeScoreTable
+              judges={judges}
+              resultHeaders={['Pts']}
+              rows={group.rows.map((row) => ({
+                key: row.competitorId,
+                label: resultRowLabel(row),
+                results: [row.points],
+              }))}
+              cell={(judgeId, key) => voteMark(voteBallots.get(judgeId)?.[key])}
+            />
+          </Box>
+        ))}
+      </Stack>
+    )
+  }
+
+  const placements = results.results.placements ?? []
+  if (!placements.length) {
+    return (
+      <Typography color="text.secondary">No locked ballots yet.</Typography>
+    )
+  }
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Typography variant="h6">Pairs</Typography>
-        {!results.length && (
-          <Typography color="text.secondary" sx={{ mt: 1 }}>
-            No locked scores yet
-          </Typography>
-        )}
-        <List disablePadding>
-          {results.map((result) => {
-            const names =
-              result.leadFirstName && result.followFirstName
-                ? ` — ${result.leadFirstName} & ${result.followFirstName}`
-                : ''
-            return (
-              <ListItem key={result.leadCompetitorId} disableGutters>
-                <ListItemText
-                  primary={`#${result.leadBibNumber}${names}`}
-                  secondary={`${result.submittedScoreCount} submitted score${result.submittedScoreCount === 1 ? '' : 's'}`}
-                />
-                <Typography
-                  variant="h6"
-                  sx={{ fontVariantNumeric: 'tabular-nums' }}
-                >
-                  {result.average.toFixed(2)}
-                </Typography>
-              </ListItem>
-            )
-          })}
-        </List>
-      </CardContent>
-    </Card>
+    <JudgeScoreTable
+      judges={judges}
+      resultHeaders={['Place']}
+      rows={placements.map((row) => ({
+        key: row.competitorId,
+        label: resultRowLabel(row),
+        results: [row.placement ?? '—'],
+      }))}
+      cell={(judgeId, key) => rankBallots.get(judgeId)?.[key] ?? '—'}
+    />
   )
 }
 
-function ResultsList({
+function NumericResultsTable({
   title,
-  results,
+  rows,
+  judges,
+  ballotByJudge,
 }: {
   title: string
-  results: PreliminaryResult[]
+  rows: Array<{
+    key: string
+    label: string
+    average: number
+    placement: number | null
+  }>
+  judges: { id: string; label: string; isHead?: boolean }[]
+  ballotByJudge: Map<string, Record<string, number>>
 }) {
   return (
     <Card variant="outlined">
       <CardContent>
         <Typography variant="h6">{title}</Typography>
-        {!results.length && (
+        {!rows.length && (
           <Typography color="text.secondary" sx={{ mt: 1 }}>
             No locked scores yet
           </Typography>
         )}
-        <List disablePadding>
-          {results.map((result) => {
-            const name =
-              result.firstName && result.lastName
-                ? ` — ${result.firstName} ${result.lastName}`
-                : ''
-            return (
-              <ListItem key={result.competitorId} disableGutters>
-                <ListItemText
-                  primary={`#${result.bibNumber}${name}`}
-                  secondary={`${result.submittedScoreCount} submitted score${result.submittedScoreCount === 1 ? '' : 's'}`}
-                />
-                <Typography
-                  variant="h6"
-                  sx={{ fontVariantNumeric: 'tabular-nums' }}
-                >
-                  {result.average.toFixed(2)}
-                </Typography>
-              </ListItem>
-            )
-          })}
-        </List>
+        {rows.length > 0 && (
+          <JudgeScoreTable
+            judges={judges}
+            resultHeaders={['Avg', 'Place']}
+            rows={rows.map((row) => ({
+              key: row.key,
+              label: row.label,
+              results: [row.average.toFixed(2), row.placement ?? '—'],
+            }))}
+            cell={(judgeId, key) => ballotByJudge.get(judgeId)?.[key] ?? '—'}
+          />
+        )}
       </CardContent>
     </Card>
   )
@@ -217,12 +281,6 @@ function RoundsStatusList({
     <Stack spacing={2}>
       {rounds.map((round) => {
         const result = results[round.id]
-        const callbackRows = [
-          ...(result?.results.leads ?? []),
-          ...(result?.results.follows ?? []),
-          ...(result?.results.entries ?? []),
-        ]
-        const placementRows = result?.results.placements ?? []
         return (
           <Card key={round.id} variant="outlined">
             <CardContent>
@@ -248,37 +306,11 @@ function RoundsStatusList({
                   ? 'Callback'
                   : 'Relative placement'}
               </Typography>
-              <List disablePadding dense>
-                {round.type === 'callback'
-                  ? callbackRows.map((row) => (
-                      <ListItem key={row.competitorId} disableGutters>
-                        <ListItemText
-                          primary={`#${row.bibNumber}${row.firstName ? ` ${row.firstName} ${row.lastName ?? ''}` : ''}`}
-                          secondary={`Yes ${row.yes} · Alt ${row.alternate} · No ${row.no}`}
-                        />
-                        <Typography
-                          sx={{ fontVariantNumeric: 'tabular-nums' }}
-                        >
-                          {row.points}
-                        </Typography>
-                      </ListItem>
-                    ))
-                  : placementRows.map((row) => (
-                      <ListItem key={row.competitorId} disableGutters>
-                        <ListItemText
-                          primary={`#${row.bibNumber}${row.firstName ? ` ${row.firstName} ${row.lastName ?? ''}` : ''}`}
-                        />
-                        <Typography
-                          sx={{ fontVariantNumeric: 'tabular-nums' }}
-                        >
-                          {row.placement ?? '—'}
-                        </Typography>
-                      </ListItem>
-                    ))}
-              </List>
-              {!callbackRows.length && !placementRows.length && (
+              {result ? (
+                <RoundResultsTable results={result} type={round.type} />
+              ) : (
                 <Typography color="text.secondary">
-                  No locked ballots yet.
+                  Loading results…
                 </Typography>
               )}
             </CardContent>
@@ -319,6 +351,14 @@ export default function DivisionStatusPage() {
   const submittedCount = status?.judges.submitted.length ?? 0
   const pendingCount = status?.judges.pending.length ?? 0
   const isStrictly = status?.division.type === 'strictly'
+  const ballotByJudge = new Map(
+    (status?.ballots ?? []).map((ballot) => [ballot.judgeId, ballot.scores]),
+  )
+  const judgeColumns = (status?.judges.submitted ?? []).map((judge) => ({
+    id: judge.id,
+    label: judgeLabel(judge),
+    isHead: judge.isHead,
+  }))
 
   return (
     <>
@@ -402,7 +442,21 @@ export default function DivisionStatusPage() {
                 </Alert>
               </Box>
               {isStrictly ? (
-                <PairResultsList results={status.preliminaryResults.pairs} />
+                <NumericResultsTable
+                  title="Pairs"
+                  rows={status.preliminaryResults.pairs.map((pair) => ({
+                    key: pair.leadCompetitorId,
+                    label: `#${pair.leadBibNumber}${
+                      pair.leadFirstName && pair.followFirstName
+                        ? ` — ${pair.leadFirstName} & ${pair.followFirstName}`
+                        : ''
+                    }`,
+                    average: pair.average,
+                    placement: pair.placement,
+                  }))}
+                  judges={judgeColumns}
+                  ballotByJudge={ballotByJudge}
+                />
               ) : (
                 <Box
                   sx={{
@@ -411,13 +465,35 @@ export default function DivisionStatusPage() {
                     gap: 2,
                   }}
                 >
-                  <ResultsList
+                  <NumericResultsTable
                     title="Leads"
-                    results={status.preliminaryResults.leads}
+                    rows={status.preliminaryResults.leads.map((row) => ({
+                      key: row.competitorId,
+                      label: `#${row.bibNumber}${
+                        row.firstName && row.lastName
+                          ? ` — ${row.firstName} ${row.lastName}`
+                          : ''
+                      }`,
+                      average: row.average,
+                      placement: row.placement,
+                    }))}
+                    judges={judgeColumns}
+                    ballotByJudge={ballotByJudge}
                   />
-                  <ResultsList
+                  <NumericResultsTable
                     title="Follows"
-                    results={status.preliminaryResults.follows}
+                    rows={status.preliminaryResults.follows.map((row) => ({
+                      key: row.competitorId,
+                      label: `#${row.bibNumber}${
+                        row.firstName && row.lastName
+                          ? ` — ${row.firstName} ${row.lastName}`
+                          : ''
+                      }`,
+                      average: row.average,
+                      placement: row.placement,
+                    }))}
+                    judges={judgeColumns}
+                    ballotByJudge={ballotByJudge}
                   />
                 </Box>
               )}

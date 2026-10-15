@@ -1,4 +1,4 @@
-import { Box, Chip, Paper, Slider, Typography } from '@mui/material'
+import { Box, Chip, IconButton, Paper, Slider, Typography } from '@mui/material'
 
 type ScoreSliderRowProps = {
   bibNumber: number
@@ -51,16 +51,24 @@ export default function ScoreSliderRow({
         sx={{
           display: 'flex',
           alignItems: 'center',
-          gap: 2,
+          gap: 1,
         }}
       >
+        <IconButton
+          size="small"
+          aria-label="Decrease score"
+          disabled={disabled || score <= 1}
+          onClick={() => onScoreChange(Math.max(1, score - 0.5))}
+        >
+          −
+        </IconButton>
         <Slider
           value={score}
           onChange={(_, value) => onScoreChange(value as number)}
           disabled={disabled}
           min={1}
           max={10}
-          step={1}
+          step={0.5}
           valueLabelDisplay="off"
           marks={[
             { value: 1, label: '1' },
@@ -71,6 +79,14 @@ export default function ScoreSliderRow({
             minWidth: 0,
           }}
         />
+        <IconButton
+          size="small"
+          aria-label="Increase score"
+          disabled={disabled || score >= 10}
+          onClick={() => onScoreChange(Math.min(10, score + 0.5))}
+        >
+          +
+        </IconButton>
 
         <Paper
           variant="outlined"

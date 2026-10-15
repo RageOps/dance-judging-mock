@@ -38,6 +38,11 @@
   computed `judgingStatus` (`not_started`/`in_progress`/`completed`): for rounds
   divisions from `division_rounds.status`; for numeric divisions, completed when
   every assigned event judge has a locked `score_submissions` row.
+- `round_impressions` (judge × round × competitor → `score` real 1–10) holds the
+  per-entry slider value on `RoundScoringPage`, distinct from the official mark
+  (vote/rank). Migration: `server/drizzle/0011_round-impressions.sql`. The judge
+  sheet GET returns it as `impression` per entry; the scores PUT replaces the
+  judge's set whenever the `impressions` key is present in the body (optional).
 - `DELETE /api/events/:eventId/divisions/:divisionId/registrations/:competitorId` —
   "scratch": deletes the registration, any `division_pairs` rows involving the
   competitor, and that competitor's `scores` rows in the division. Intentionally
@@ -91,6 +96,19 @@
 - Advancement is coordinator-driven: `RoundsPage` results show sorted tallies
   with checkboxes, "Select top N", and "Advance to next round" which writes the
   next round's heats (round-robin across its heats; single heat for finals).
+- J&J finals are judged as pairs: `heat_entries.follow_competitor_id`
+  (nullable) stores the follow for a `relative_placement` entry. Entries are
+  always keyed by the lead's competitor id/bib; the follow's bib is displayed
+  alongside. `PUT .../heats` accepts `{ competitorIds: [...] }` or
+  `{ entries: [{ competitorId, followCompetitorId }] }` per heat; for J&J
+  finals each entry must be a registered lead and any partner a registered
+  follow. Advancing into a J&J final sends all checked competitors — leads
+  and follows each get their own `heat_entries` row; follow-role rows are
+  "promoted follows" (pairing pool only). A lead's `followCompetitorId` must
+  point at a promoted follow in the same round, and only lead rows are
+  judged/ranked (follow markers are filtered out of RP sheets, validation,
+  and results). Scratch removes heat entries where the competitor is the lead OR
+  the paired follow (removing the whole pair either way).
 - Judge flow: `JudgeRoundsPage` lists rounds (gated on `pending`);
   `RoundScoringPage` renders Y/Alt/No toggle buttons per entry (with lead/
   follow/both scope for J&J) or rank selects for finals.

@@ -55,8 +55,9 @@ seed is idempotent and only creates the account when it does not already exist.
 3. Share the initial password securely with the judge. Passwords are stored
    only as bcrypt hashes.
 4. The judge signs in and selects an assigned event, then a division.
-5. The judge selects Leads, Follows, or Both, enters one integer score from
-   1–10 for each competitor in that scope, and selects **Save scores**.
+5. The judge selects Leads, Follows, or Both, enters one score from 1–10 (in
+   0.5 steps via slider or −/+ buttons) for each competitor in that scope, and
+   selects **Save scores**.
 6. Saved scores are locked against accidental changes. The judge can select
    **Edit scores**, make changes, and save a new revision.
 
@@ -92,6 +93,48 @@ Strictly divisions require admins to pair each registered lead with one follow.
 Judges score each pair once using the lead competitor's bib number. Division
 status lists pairs by lead bib with both dancers' first names (when name
 visibility allows).
+
+## Relative placement (finals scoring)
+
+Finals rounds use the Relative Placement Scoring System (RPSS), implemented in
+`server/src/relativePlacement.ts` and applied to the locked judge ballots for
+each `relative_placement` round. To fact-check a computed result:
+
+**Setup**
+
+- Only **locked** judge ballots count; judges who haven't submitted don't
+  affect the majority threshold.
+- Each judge gives every finalist a unique rank from 1 to N (N = number of
+  finalists).
+- The majority needed is `floor(judgeCount / 2) + 1` — strictly more than half
+  of the submitted ballots (e.g., 4 of 7 judges, 3 of 5, 2 of 3).
+- For each entry, build a cumulative count per column: `counts[k]` = how many
+  judges ranked that entry at place `k` **or better** (so rank 2 counts toward
+  columns 2, 3, 4, …, N).
+
+**Placing entries** — starting at place 1, scanning each column from the
+current place upward:
+
+1. Any unplaced entry whose cumulative count in that column reaches the
+   majority becomes a candidate for the next placement.
+2. If several entries are candidates in the same column, order them by:
+   a. Higher count in that column (a deeper majority wins),
+   b. Lower sum of the ranks that make up that count (ranks ≤ the column),
+   c. Higher cumulative count in each deeper column, left to right,
+   d. The head judge's rank (lower wins; an entry the head judge didn't rank
+      loses this tiebreak).
+3. Entries still tied after all four steps **share** the placement, and the
+   next place number skips ahead by the size of the tie (two entries tied for
+   2nd → next placement is 4th).
+
+**No-majority fallback** — if remaining entries never reach a majority in any
+column, they are placed by lowest sum of all their ranks, with the head
+judge's rank as the tiebreak; identical sums **and** identical head-judge
+ranks share the placement.
+
+**Callback rounds** (non-finals) do not use relative placement. Each ballot
+scores `yes` = 1 point, `alternate` = 0.5, `no` = 0; results are sorted by
+points, then yes count, then the head judge's vote, then bib number.
 
 ## Scoring logic to revisit
 

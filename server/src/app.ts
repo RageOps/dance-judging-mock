@@ -17,6 +17,7 @@ import {
   heats,
   judgeEventAssignments,
   placements,
+  roundImpressions,
   roundSubmissions,
   scores,
   scoreSubmissions,
@@ -765,7 +766,13 @@ export function buildApp() {
               .delete(heatEntries)
               .where(
                 and(
-                  eq(heatEntries.competitorId, request.params.competitorId),
+                  or(
+                    eq(heatEntries.competitorId, request.params.competitorId),
+                    eq(
+                      heatEntries.followCompetitorId,
+                      request.params.competitorId,
+                    ),
+                  ),
                   inArray(heatEntries.heatId, divisionHeatIds),
                 ),
               )
@@ -784,6 +791,14 @@ export function buildApp() {
               and(
                 eq(placements.competitorId, request.params.competitorId),
                 inArray(placements.roundId, divisionRoundIds),
+              ),
+            )
+          await tx
+            .delete(roundImpressions)
+            .where(
+              and(
+                eq(roundImpressions.competitorId, request.params.competitorId),
+                inArray(roundImpressions.roundId, divisionRoundIds),
               ),
             )
         }

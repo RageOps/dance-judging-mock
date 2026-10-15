@@ -30,6 +30,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   api,
   type CallbackResultRow,
+  type CallbackVote,
   type Division,
   type DivisionPair,
   type DivisionRound,
@@ -38,6 +39,8 @@ import {
   type RoundStatus,
   type RoundType,
 } from '../api/client'
+import JudgeScoreTable from '../components/JudgeScoreTable'
+import { judgeLabel } from '../utils/format'
 
 type PoolEntry = {
   competitorId: string
@@ -84,35 +87,75 @@ function HeatEditor({
 }) {
   const [heatCount, setHeatCount] = useState(Math.max(round.heats.length, 1))
   const [assignments, setAssignments] = useState<Record<string, number>>({})
+  const [partners, setPartners] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  const pairsFinal =
+    division.type === 'jack_and_jill' &&
+    round.type === 'relative_placement'
+  const leads = pool.filter((entry) => entry.role === 'lead')
+  const follows = pool.filter((entry) => entry.role === 'follow')
+  // Only follows promoted into the final can be paired.
+  const promotedFollows = follows.filter(
+    (entry) => (assignments[entry.competitorId] ?? 0) >= 1,
+  )
+  const usedPartners = new Set(
+    Object.entries(partners)
+      .filter(([leadId]) => (assignments[leadId] ?? 0) >= 1)
+      .map(([, followId]) => followId)
+      .filter(Boolean),
+  )
 
   useEffect(() => {
     setHeatCount(Math.max(round.heats.length, 1))
     const next: Record<string, number> = {}
+    const nextPartners: Record<string, string> = {}
     for (const heat of round.heats) {
-      for (const entry of heat.entries) next[entry.competitorId] = heat.position
+      for (const entry of heat.entries) {
+        next[entry.competitorId] = heat.position
+        if (entry.followCompetitorId) {
+          nextPartners[entry.competitorId] = entry.followCompetitorId
+        }
+      }
     }
     setAssignments(next)
+    setPartners(nextPartners)
   }, [round])
 
   async function save() {
     setSaving(true)
     setError('')
     try {
-      const heats = Array.from({ length: heatCount }, () => [] as string[])
-      for (const entry of pool) {
-        const heat = assignments[entry.competitorId] ?? 0
-        if (heat >= 1 && heat <= heatCount) heats[heat - 1]!.push(entry.competitorId)
-      }
+      const heats = pairsFinal
+        ? [
+            {
+              entries: [
+                ...leads
+                  .filter(
+                    (entry) => (assignments[entry.competitorId] ?? 0) >= 1,
+                  )
+                  .map((entry) => ({
+                    competitorId: entry.competitorId,
+                    followCompetitorId:
+                      partners[entry.competitorId] || undefined,
+                  })),
+                ...follows
+                  .filter(
+                    (entry) => (assignments[entry.competitorId] ?? 0) >= 1,
+                  )
+                  .map((entry) => ({ competitorId: entry.competitorId })),
+              ],
+            },
+          ]
+        : Array.from({ length: heatCount }, (_, index) => ({
+            competitorIds: pool
+              .filter((entry) => assignments[entry.competitorId] === index + 1)
+              .map((entry) => entry.competitorId),
+          }))
       await api(
         `/events/${eventId}/divisions/${division.id}/rounds/${round.id}/heats`,
-        {
-          method: 'PUT',
-          body: JSON.stringify({
-            heats: heats.map((competitorIds) => ({ competitorIds })),
-          }),
-        },
+        { method: 'PUT', body: JSON.stringify({ heats }) },
       )
       onSaved()
     } catch (reason) {
@@ -122,17 +165,29 @@ function HeatEditor({
     }
   }
 
+  const rows = pairsFinal ? leads : pool
   return (
     <Box>
       <Typography variant="subtitle1" sx={{ mb: 1 }}>
-        Heat assignments
+        {pairsFinal ? 'Finals pairs' : 'Heat assignments'}
       </Typography>
+      {pairsFinal && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Each finals pair is one lead and one follow, identified by the
+          lead&apos;s bib number.
+        </Typography>
+      )}
       {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
       {!pool.length && (
         <Typography color="text.secondary">
           No eligible participants. Configure registrations
           {division.type === 'strictly' ? ' and pairs' : ''} first.
         </Typography>
+      )}
+      {pairsFinal && !follows.length && pool.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 1 }}>
+          No follows are registered, so pairs cannot be formed yet.
+        </Alert>
       )}
       {round.type === 'callback' && pool.length > 0 && (
         <TextField
@@ -150,40 +205,136 @@ function HeatEditor({
         />
       )}
       <List disablePadding dense>
-        {pool.map((entry) => (
-          <ListItem
-            key={entry.competitorId}
-            disableGutters
-            secondaryAction={
-              <Select
-                size="small"
-                value={String(assignments[entry.competitorId] ?? 0)}
-                onChange={(event) =>
-                  setAssignments((current) => ({
-                    ...current,
-                    [entry.competitorId]: Number(event.target.value),
-                  }))
-                }
-                sx={{ minWidth: 120 }}
-              >
-                <MenuItem value={0}>Not in round</MenuItem>
-                {Array.from({ length: heatCount }, (_, index) => (
-                  <MenuItem key={index + 1} value={index + 1}>
-                    {round.type === 'relative_placement'
-                      ? 'In finals'
-                      : `Heat ${index + 1}`}
-                  </MenuItem>
-                ))}
-              </Select>
-            }
-          >
-            <ListItemText
-              primary={`#${entry.bibNumber} ${entry.label}`}
-              secondary={entry.role ? entry.role : undefined}
-            />
-          </ListItem>
-        ))}
+        {rows.map((entry) => {
+          const inRound = (assignments[entry.competitorId] ?? 0) >= 1
+          return (
+            <ListItem
+              key={entry.competitorId}
+              disableGutters
+              secondaryAction={
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  {pairsFinal && inRound && (
+                    <Select
+                      size="small"
+                      displayEmpty
+                      value={partners[entry.competitorId] ?? ''}
+                      onChange={(selectEvent) =>
+                        setPartners((current) => ({
+                          ...current,
+                          [entry.competitorId]: selectEvent.target.value,
+                        }))
+                      }
+                      sx={{ minWidth: 140 }}
+                    >
+                      <MenuItem value="">
+                        <em>Pick a follow</em>
+                      </MenuItem>
+                      {promotedFollows.map((follow) => (
+                        <MenuItem
+                          key={follow.competitorId}
+                          value={follow.competitorId}
+                          disabled={
+                            usedPartners.has(follow.competitorId) &&
+                            partners[entry.competitorId] !==
+                              follow.competitorId
+                          }
+                        >
+                          #{follow.bibNumber} {follow.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  )}
+                  <Select
+                    size="small"
+                    value={String(assignments[entry.competitorId] ?? 0)}
+                    onChange={(selectEvent) =>
+                      setAssignments((current) => ({
+                        ...current,
+                        [entry.competitorId]: Number(selectEvent.target.value),
+                      }))
+                    }
+                    sx={{ minWidth: 120 }}
+                  >
+                    <MenuItem value={0}>Not in round</MenuItem>
+                    {Array.from({ length: heatCount }, (_, index) => (
+                      <MenuItem key={index + 1} value={index + 1}>
+                        {round.type === 'relative_placement'
+                          ? 'In finals'
+                          : `Heat ${index + 1}`}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </Box>
+              }
+            >
+              <ListItemText
+                primary={`#${entry.bibNumber} ${entry.label}`}
+                secondary={!pairsFinal && entry.role ? entry.role : undefined}
+              />
+            </ListItem>
+          )
+        })}
       </List>
+      {pairsFinal && (
+        <>
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+            Promoted follows
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Only follows marked &quot;In finals&quot; can be paired with a lead.
+          </Typography>
+          <List disablePadding dense>
+            {follows.map((entry) => (
+              <ListItem
+                key={entry.competitorId}
+                disableGutters
+                secondaryAction={
+                  <Select
+                    size="small"
+                    value={String(assignments[entry.competitorId] ?? 0)}
+                    onChange={(selectEvent) => {
+                      const next = Number(selectEvent.target.value)
+                      setAssignments((current) => ({
+                        ...current,
+                        [entry.competitorId]: next,
+                      }))
+                      if (next === 0) {
+                        // Clear pairings that used this follow.
+                        setPartners((current) =>
+                          Object.fromEntries(
+                            Object.entries(current).map(([leadId, followId]) => [
+                              leadId,
+                              followId === entry.competitorId ? '' : followId,
+                            ]),
+                          ),
+                        )
+                      }
+                    }}
+                    sx={{ minWidth: 120 }}
+                  >
+                    <MenuItem value={0}>Not in round</MenuItem>
+                    <MenuItem value={1}>In finals</MenuItem>
+                  </Select>
+                }
+              >
+                <ListItemText
+                  primary={`#${entry.bibNumber} ${entry.label}`}
+                  secondary={
+                    usedPartners.has(entry.competitorId)
+                      ? 'paired'
+                      : undefined
+                  }
+                />
+              </ListItem>
+            ))}
+            {!follows.length && (
+              <Typography color="text.secondary">
+                No follows are registered in this division.
+              </Typography>
+            )}
+          </List>
+        </>
+      )}
       {pool.length > 0 && (
         <Button
           variant="contained"
@@ -191,7 +342,7 @@ function HeatEditor({
           disabled={saving || round.status === 'complete'}
           sx={{ mt: 1 }}
         >
-          {saving ? 'Saving…' : 'Save heats'}
+          {saving ? 'Saving…' : pairsFinal ? 'Save pairs' : 'Save heats'}
         </Button>
       )}
     </Box>
@@ -219,6 +370,15 @@ function CallbackResults({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [topN, setTopN] = useState('')
   const [error, setError] = useState('')
+  const voteBallots = new Map(
+    (results.results.voteBallots ?? []).map((ballot) => [
+      ballot.judgeId,
+      ballot.votes,
+    ]),
+  )
+  const submittedJudges = results.judges.submitted
+  const voteMark = (vote?: CallbackVote) =>
+    vote === 'yes' ? 'Y' : vote === 'alternate' ? 'A' : vote === 'no' ? 'N' : undefined
 
   function applyTopN() {
     const n = Number(topN)
@@ -234,24 +394,36 @@ function CallbackResults({
     if (!nextRound) return
     setError('')
     try {
-      const heatTotal =
-        nextRound.type === 'relative_placement'
-          ? 1
-          : Math.max(nextRound.heats.length, 1)
-      const heats = Array.from({ length: heatTotal }, () => [] as string[])
-      let index = 0
-      for (const id of selected) {
-        heats[index % heatTotal]!.push(id)
-        index += 1
-      }
+      // In a J&J final, checked leads and follows both advance as entries;
+      // leads stay unpaired until the coordinator assigns promoted follows.
+      const jnjFinal =
+        nextRound.type === 'relative_placement' &&
+        division.type === 'jack_and_jill'
+      const heats = jnjFinal
+        ? [
+            {
+              entries: [...selected].map((id) => ({ competitorId: id })),
+            },
+          ]
+        : (() => {
+            const heatTotal =
+              nextRound.type === 'relative_placement'
+                ? 1
+                : Math.max(nextRound.heats.length, 1)
+            const lists = Array.from(
+              { length: heatTotal },
+              () => [] as string[],
+            )
+            let index = 0
+            for (const id of selected) {
+              lists[index % heatTotal]!.push(id)
+              index += 1
+            }
+            return lists.map((competitorIds) => ({ competitorIds }))
+          })()
       await api(
         `/events/${eventId}/divisions/${division.id}/rounds/${nextRound.id}/heats`,
-        {
-          method: 'PUT',
-          body: JSON.stringify({
-            heats: heats.map((competitorIds) => ({ competitorIds })),
-          }),
-        },
+        { method: 'PUT', body: JSON.stringify({ heats }) },
       )
       onAdvanced()
     } catch (reason) {
@@ -294,6 +466,22 @@ function CallbackResults({
         <Box key={group.title} sx={{ mb: 2 }}>
           {groups.length > 1 && (
             <Typography variant="subtitle2">{group.title}</Typography>
+          )}
+          {submittedJudges.length > 0 && (
+            <JudgeScoreTable
+              judges={submittedJudges.map((judge) => ({
+                id: judge.id,
+                label: judgeLabel(judge),
+                isHead: judge.isHead,
+              }))}
+              resultHeaders={['Pts']}
+              rows={group.rows.map((row) => ({
+                key: row.competitorId,
+                label: entryLabel(row),
+                results: [row.points],
+              }))}
+              cell={(judgeId, key) => voteMark(voteBallots.get(judgeId)?.[key])}
+            />
           )}
           <List disablePadding dense>
             {group.rows.map(resultRow)}
@@ -465,25 +653,32 @@ function RoundCard({
                 results={results}
                 onAdvanced={onChanged}
               />
+            ) : !results.results.placements?.length ? (
+              <Typography color="text.secondary">
+                No placements yet — waiting on locked ballots.
+              </Typography>
             ) : (
-              <List disablePadding dense>
-                {(results.results.placements ?? []).map((row) => (
-                  <ListItem key={row.competitorId} disableGutters>
-                    <ListItemText primary={entryLabel(row)} />
-                    <Typography
-                      variant="h6"
-                      sx={{ fontVariantNumeric: 'tabular-nums' }}
-                    >
-                      {row.placement ?? '—'}
-                    </Typography>
-                  </ListItem>
-                ))}
-                {!results.results.placements?.length && (
-                  <Typography color="text.secondary">
-                    No placements yet — waiting on locked ballots.
-                  </Typography>
-                )}
-              </List>
+              <JudgeScoreTable
+                judges={results.judges.submitted.map((judge) => ({
+                  id: judge.id,
+                  label: judgeLabel(judge),
+                  isHead: judge.isHead,
+                }))}
+                resultHeaders={['Place']}
+                rows={results.results.placements.map((row) => ({
+                  key: row.competitorId,
+                  label: entryLabel(row),
+                  results: [row.placement ?? '—'],
+                }))}
+                cell={(judgeId, key) =>
+                  new Map(
+                    (results.results.ballots ?? []).map((ballot) => [
+                      ballot.judgeId,
+                      ballot.ranks,
+                    ]),
+                  ).get(judgeId)?.[key] ?? '—'
+                }
+              />
             )}
           </Box>
         )}

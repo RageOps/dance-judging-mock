@@ -14,6 +14,7 @@ import {
   heats,
   judgeEventAssignments,
   placements,
+  roundImpressions,
   roundSubmissions,
   users,
 } from '../db/schema.js'
@@ -105,6 +106,7 @@ async function loadRoundEntries(
       .where(eq(heats.roundId, roundId))
       .orderBy(asc(heats.position), asc(competitors.bibNumber))
   }
+  const followCompetitor = alias(competitors, 'follow_competitor')
   return db
     .select({
       heatId: heats.id,
@@ -114,6 +116,10 @@ async function loadRoundEntries(
       firstName: competitors.firstName,
       lastName: competitors.lastName,
       role: divisionRegistrations.role,
+      followCompetitorId: heatEntries.followCompetitorId,
+      followBibNumber: followCompetitor.bibNumber,
+      followFirstName: followCompetitor.firstName,
+      followLastName: followCompetitor.lastName,
     })
     .from(heatEntries)
     .innerJoin(heats, eq(heats.id, heatEntries.heatId))
@@ -124,6 +130,10 @@ async function loadRoundEntries(
         eq(divisionRegistrations.competitorId, heatEntries.competitorId),
         eq(divisionRegistrations.divisionId, division.id),
       ),
+    )
+    .leftJoin(
+      followCompetitor,
+      eq(followCompetitor.id, heatEntries.followCompetitorId),
     )
     .where(eq(heats.roundId, roundId))
     .orderBy(asc(heats.position), asc(competitors.bibNumber))
@@ -329,24 +339,63 @@ export async function roundRoutes(app: FastifyInstance) {
       if (!rawHeats) {
         return reply.code(400).send({ message: 'Heats are required' })
       }
+      // Each heat accepts either `competitorIds` (plain id strings) or
+      // `entries` ({ competitorId, followCompetitorId? } objects). The latter
+      // is how Jack & Jill finals pairs are submitted.
       const parsed = rawHeats.map((heat) => {
-        if (!isRecord(heat) || !Array.isArray(heat.competitorIds)) return null
-        const ids = heat.competitorIds.filter(
-          (id): id is string => typeof id === 'string',
-        )
-        return ids.length === heat.competitorIds.length ? [...new Set(ids)] : null
+        if (!isRecord(heat)) return null
+        const rawEntries = Array.isArray(heat.entries)
+          ? heat.entries
+          : Array.isArray(heat.competitorIds)
+            ? heat.competitorIds
+            : null
+        if (!rawEntries) return null
+        const entries = rawEntries.map((item) => {
+          if (typeof item === 'string') {
+            return { competitorId: item, followCompetitorId: null }
+          }
+          if (!isRecord(item)) return null
+          const competitorId =
+            typeof item.competitorId === 'string' ? item.competitorId : null
+          const followCompetitorId =
+            typeof item.followCompetitorId === 'string'
+              ? item.followCompetitorId
+              : null
+          return competitorId ? { competitorId, followCompetitorId } : null
+        })
+        return entries.every((entry) => entry !== null) ? entries : null
       })
       if (parsed.some((heat) => !heat)) {
         return reply
           .code(400)
-          .send({ message: 'Each heat needs a list of competitor IDs' })
+          .send({ message: 'Each heat needs a list of competitor entries' })
       }
-      const heatLists = parsed as string[][]
-      const allIds = heatLists.flat()
-      if (new Set(allIds).size !== allIds.length) {
+      const heatLists = parsed as Array<
+        Array<{ competitorId: string; followCompetitorId: string | null }>
+      >
+      const allIds = heatLists.flat().map((entry) => entry.competitorId)
+      const allFollows = heatLists
+        .flat()
+        .map((entry) => entry.followCompetitorId)
+        .filter((id): id is string => id !== null)
+      const jnjFinal =
+        division.type === 'jack_and_jill' &&
+        round.type === 'relative_placement'
+      if (
+        new Set(allIds).size !== allIds.length ||
+        new Set(allFollows).size !== allFollows.length ||
+        // In a J&J final a follow appears as their own promoted entry AND as
+        // a lead's partner, so follows may overlap allIds there — elsewhere
+        // they must stay distinct.
+        (!jnjFinal && allFollows.some((id) => allIds.includes(id))) ||
+        heatLists.flat().some((entry) => entry.competitorId === entry.followCompetitorId)
+      ) {
         return reply
           .code(400)
-          .send({ message: 'A competitor can only appear in one heat' })
+          .send({
+            message:
+              'A competitor can only appear once, and pair partners must be distinct',
+          })
       }
       if (round.type === 'relative_placement' && heatLists.length > 1) {
         return reply
@@ -355,39 +404,78 @@ export async function roundRoutes(app: FastifyInstance) {
       }
 
       // Entries must be registered (Jack & Jill) or paired leads (Strictly).
+      const registrations = await db
+        .select({
+          competitorId: divisionRegistrations.competitorId,
+          role: divisionRegistrations.role,
+        })
+        .from(divisionRegistrations)
+        .where(
+          eq(divisionRegistrations.divisionId, request.params.divisionId),
+        )
       const eligible =
         division.type === 'strictly'
-          ? await db
-              .select({ id: divisionPairs.leadCompetitorId })
-              .from(divisionPairs)
-              .where(eq(divisionPairs.divisionId, request.params.divisionId))
-          : await db
-              .select({ id: divisionRegistrations.competitorId })
-              .from(divisionRegistrations)
-              .where(
-                eq(divisionRegistrations.divisionId, request.params.divisionId),
-              )
-      const eligibleIds = new Set(eligible.map((row) => row.id))
-      if (allIds.some((id) => !eligibleIds.has(id))) {
+          ? new Set(
+              (
+                await db
+                  .select({ id: divisionPairs.leadCompetitorId })
+                  .from(divisionPairs)
+                  .where(
+                    eq(divisionPairs.divisionId, request.params.divisionId),
+                  )
+              ).map((row) => row.id),
+            )
+          : new Set(registrations.map((row) => row.competitorId))
+      if (allIds.some((id) => !eligible.has(id))) {
         return reply
           .code(400)
           .send({ message: 'Heat entries must be division participants' })
+      }
+      if (division.type === 'jack_and_jill') {
+        const roleById = new Map(
+          registrations.map((row) => [row.competitorId, row.role]),
+        )
+        const allIdSet = new Set(allIds)
+        const entries = heatLists.flat()
+        if (
+          allFollows.some((id) => !eligible.has(id)) ||
+          (jnjFinal &&
+            entries.some(
+              (entry) =>
+                // A partner may only come from a promoted (in-round) follow,
+                // and only lead entries can carry a partner.
+                (entry.followCompetitorId !== null &&
+                  (roleById.get(entry.competitorId) !== 'lead' ||
+                    roleById.get(entry.followCompetitorId) !== 'follow' ||
+                    !allIdSet.has(entry.followCompetitorId))),
+            ))
+        ) {
+          return reply.code(400).send({
+            message: jnjFinal
+              ? 'Finals pairs must be a lead with a promoted in-round follow'
+              : 'Pair partners must be division participants',
+          })
+        }
       }
 
       await db.transaction(async (tx) => {
         await tx
           .delete(heats)
           .where(eq(heats.roundId, request.params.roundId))
-        for (const [index, ids] of heatLists.entries()) {
+        for (const [index, entries] of heatLists.entries()) {
           const [heat] = await tx
             .insert(heats)
             .values({ roundId: request.params.roundId, position: index + 1 })
             .returning()
           if (!heat) throw new Error('Failed to create heat')
-          if (ids.length) {
-            await tx
-              .insert(heatEntries)
-              .values(ids.map((competitorId) => ({ heatId: heat.id, competitorId })))
+          if (entries.length) {
+            await tx.insert(heatEntries).values(
+              entries.map((entry) => ({
+                heatId: heat.id,
+                competitorId: entry.competitorId,
+                followCompetitorId: entry.followCompetitorId,
+              })),
+            )
           }
         }
       })
@@ -453,7 +541,11 @@ export async function roundRoutes(app: FastifyInstance) {
           submittedAt: submission?.submittedAt ?? null,
         }
       })
-      const entryRows = await loadRoundEntries(round.id, division)
+      const entryRows = (await loadRoundEntries(round.id, division)).filter(
+        // In J&J finals, follow-role rows are promotion markers — only lead
+        // entries (which carry their partner) are judged.
+        (row) => round.type !== 'relative_placement' || row.role !== 'follow',
+      )
       const mask = (row: HeatEntryRow) => ({
         ...row,
         firstName: showNames ? row.firstName : undefined,
@@ -528,6 +620,14 @@ export async function roundRoutes(app: FastifyInstance) {
             leads: sortRows(results.filter((row) => row.role === 'lead')),
             follows: sortRows(results.filter((row) => row.role === 'follow')),
             entries: sortRows(results.filter((row) => row.role == null)),
+            voteBallots: [...lockedJudgeIds].map((judgeId) => ({
+              judgeId,
+              votes: Object.fromEntries(
+                voteRows
+                  .filter((row) => row.judgeId === judgeId)
+                  .map((row) => [row.competitorId, row.vote]),
+              ),
+            })),
           },
         }
       }
@@ -668,8 +768,25 @@ export async function roundRoutes(app: FastifyInstance) {
           'vote' in mark ? mark.vote : mark.rank,
         ]),
       )
+      const impressionRows = await db
+        .select({
+          competitorId: roundImpressions.competitorId,
+          score: roundImpressions.score,
+        })
+        .from(roundImpressions)
+        .where(
+          and(
+            eq(roundImpressions.judgeId, request.user.id),
+            eq(roundImpressions.roundId, round.id),
+          ),
+        )
+      const impressionByCompetitor = new Map(
+        impressionRows.map((row) => [row.competitorId, row.score]),
+      )
 
-      const rows = await loadRoundEntries(round.id, division)
+      const rows = (await loadRoundEntries(round.id, division)).filter(
+        (row) => round.type !== 'relative_placement' || row.role !== 'follow',
+      )
       const heatsResult = groupEntriesIntoHeats(rows).map((heat) => ({
         id: heat.id,
         position: heat.position,
@@ -690,6 +807,8 @@ export async function roundRoutes(app: FastifyInstance) {
               ? entry.followLastName
               : undefined,
           mark: markByCompetitor.get(entry.competitorId) ?? null,
+          impression:
+            impressionByCompetitor.get(entry.competitorId) ?? null,
         })),
       }))
 
@@ -789,11 +908,17 @@ export async function roundRoutes(app: FastifyInstance) {
         : isScope(body.scope)
           ? body.scope
           : 'both'
-      if (!isStrictly && !isScope(body.scope)) {
+      if (
+        !isStrictly &&
+        round.type === 'callback' &&
+        !isScope(body.scope)
+      ) {
         return reply.code(400).send({ message: 'A judging scope is required' })
       }
       const scopedEntries = entryRows.filter(
-        (entry) => isStrictly || scope === 'both' || entry.role === scope,
+        (entry) =>
+          (round.type !== 'relative_placement' || entry.role !== 'follow') &&
+          (isStrictly || scope === 'both' || entry.role === scope),
       )
       const scopedIds = new Set(scopedEntries.map((entry) => entry.competitorId))
 
@@ -845,7 +970,7 @@ export async function roundRoutes(app: FastifyInstance) {
           .map((mark) => mark.value as number)
           .sort((a, b) => a - b)
         const isPermutation =
-          marks.length === entryRows.length &&
+          marks.length === scopedEntries.length &&
           ranks.every((rank, index) => rank === index + 1)
         if (
           !isPermutation ||
@@ -854,9 +979,40 @@ export async function roundRoutes(app: FastifyInstance) {
           return reply
             .code(400)
             .send({
-              message: `Ranks must be a unique ordering from 1 to ${entryRows.length}`,
+              message: `Ranks must be a unique ordering from 1 to ${scopedEntries.length}`,
             })
         }
+      }
+
+      let impressionRows: Array<{ competitorId: string; score: number }> = []
+      if (body.impressions !== undefined) {
+        const raw = Array.isArray(body.impressions) ? body.impressions : null
+        const entryIds = new Set(
+          entryRows.map((entry) => entry.competitorId),
+        )
+        const parsed = (raw ?? []).map((item) => {
+          if (!isRecord(item)) return null
+          const competitorId = nonEmptyString(item.competitorId)
+          const score = item.score
+          return competitorId &&
+            typeof score === 'number' &&
+            score >= 1 &&
+            score <= 10 &&
+            score * 2 === Math.round(score * 2) &&
+            entryIds.has(competitorId)
+            ? { competitorId, score }
+            : null
+        })
+        if (!raw || parsed.some((item) => !item)) {
+          return reply.code(400).send({
+            message:
+              'Impressions need a round competitor and a 1–10 score in 0.5 steps',
+          })
+        }
+        impressionRows = parsed as Array<{
+          competitorId: string
+          score: number
+        }>
       }
 
       const now = new Date()
@@ -929,6 +1085,27 @@ export async function roundRoutes(app: FastifyInstance) {
                 roundId: request.params.roundId,
                 competitorId: mark.competitorId,
                 rank: mark.value as number,
+                updatedAt: now,
+              })),
+            )
+          }
+        }
+        if (body.impressions !== undefined) {
+          await tx
+            .delete(roundImpressions)
+            .where(
+              and(
+                eq(roundImpressions.judgeId, request.user.id),
+                eq(roundImpressions.roundId, request.params.roundId),
+              ),
+            )
+          if (impressionRows.length) {
+            await tx.insert(roundImpressions).values(
+              impressionRows.map((row) => ({
+                judgeId: request.user.id,
+                roundId: request.params.roundId,
+                competitorId: row.competitorId,
+                score: row.score,
                 updatedAt: now,
               })),
             )

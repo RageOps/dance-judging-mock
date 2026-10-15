@@ -83,6 +83,7 @@ export type DivisionRound = {
 
 export type RoundSheetEntry = HeatEntry & {
   mark: CallbackVote | number | null
+  impression: number | null
 }
 
 export type RoundSheet = {
@@ -135,6 +136,10 @@ export type RoundResults = {
     entries?: CallbackResultRow[]
     placements?: PlacementResultRow[]
     ballots?: Array<{ judgeId: string; ranks: Record<string, number> }>
+    voteBallots?: Array<{
+      judgeId: string
+      votes: Record<string, CallbackVote>
+    }>
   }
 }
 
@@ -222,6 +227,7 @@ export type PreliminaryResult = {
   role: 'lead' | 'follow'
   submittedScoreCount: number
   average: number
+  placement: number | null
 }
 
 export type PreliminaryPairResult = {
@@ -231,6 +237,7 @@ export type PreliminaryPairResult = {
   followFirstName?: string
   submittedScoreCount: number
   average: number
+  placement: number | null
 }
 
 export type DivisionStatus = {
@@ -240,6 +247,7 @@ export type DivisionStatus = {
     submitted: DivisionJudgeStatus[]
     pending: DivisionJudgeStatus[]
   }
+  ballots: Array<{ judgeId: string; scores: Record<string, number> }>
   preliminaryResults: {
     leads: PreliminaryResult[]
     follows: PreliminaryResult[]

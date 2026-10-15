@@ -17,6 +17,7 @@ import {
   requireAuth,
   requireEventAccess,
 } from '../middleware/auth.js'
+import { computeRelativePlacement } from '../relativePlacement.js'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -317,10 +318,11 @@ export async function scoreRoutes(app: FastifyInstance) {
           typeof item.competitorId === 'string' ? item.competitorId : null
         const score = item.score
         return competitorId &&
-          Number.isInteger(score) &&
-          Number(score) >= 1 &&
-          Number(score) <= 10
-          ? { competitorId, score: Number(score) }
+          typeof score === 'number' &&
+          score >= 1 &&
+          score <= 10 &&
+          score * 2 === Math.round(score * 2)
+          ? { competitorId, score }
           : null
       })
       if (
@@ -328,7 +330,7 @@ export async function scoreRoutes(app: FastifyInstance) {
         new Set(submittedScores.map((item) => item?.competitorId)).size !==
           submittedScores.length
       ) {
-        return reply.code(400).send({ message: 'Every score must be a unique integer from 1 to 10' })
+        return reply.code(400).send({ message: 'Every score must be unique and in 0.5 steps from 1 to 10' })
       }
       const validScores = submittedScores as Array<{
         competitorId: string
@@ -520,6 +522,82 @@ export async function scoreRoutes(app: FastifyInstance) {
         )
 
       const assignedJudgeIds = new Set(assignedJudges.map((judge) => judge.id))
+      const lockedJudgeIds = new Set(
+        submissions
+          .filter((submission) => submission.status === 'locked')
+          .map((submission) => submission.judgeId),
+      )
+      const ballots = [...lockedJudgeIds].map((judgeId) => ({
+        judgeId,
+        scores: Object.fromEntries(
+          lockedScoreRows
+            .filter((row) => row.judgeId === judgeId)
+            .map((row) => [row.competitorId, row.score]),
+        ),
+      }))
+      const headJudgeId = assignedJudges.find((judge) => judge.isHead)?.id
+
+      // Relative placement per scope group: each judge's scores are converted
+      // to ranks (1 + entries scored strictly higher), then RPSS runs with the
+      // head judge's ranks as the final tiebreak.
+      function placementsFor(competitorIds: string[]) {
+        const scoredBallots = ballots.filter((ballot) =>
+          competitorIds.some((id) => ballot.scores[id] !== undefined),
+        )
+        if (!competitorIds.length || !scoredBallots.length) {
+          return new Map<string, number>()
+        }
+        const rankFor = (
+          scoresMap: Record<string, number>,
+          competitorId: string,
+        ) => {
+          const mine = scoresMap[competitorId]
+          if (mine === undefined) return undefined
+          return (
+            1 +
+            competitorIds.filter(
+              (other) =>
+                (scoresMap[other] ?? Number.NEGATIVE_INFINITY) > mine,
+            ).length
+          )
+        }
+        const headScores = headJudgeId
+          ? ballots.find((ballot) => ballot.judgeId === headJudgeId)?.scores
+          : undefined
+        const headRanks = headScores
+          ? new Map(
+              competitorIds.flatMap((competitorId) => {
+                const rank = rankFor(headScores, competitorId)
+                return rank === undefined ? [] : [[competitorId, rank] as const]
+              }),
+            )
+          : undefined
+        return new Map(
+          computeRelativePlacement(
+            competitorIds.map((competitorId) => ({
+              competitorId,
+              ranks: scoredBallots
+                .map((ballot) => rankFor(ballot.scores, competitorId))
+                .filter((rank): rank is number => rank !== undefined),
+            })),
+            competitorIds.length,
+            scoredBallots.length,
+            headRanks,
+          ).map((row) => [row.competitorId, row.placement]),
+        )
+      }
+
+      const leadPlacements = placementsFor(
+        registrationRows
+          .filter((row) => row.role === 'lead')
+          .map((row) => row.competitorId),
+      )
+      const followPlacements = placementsFor(
+        registrationRows
+          .filter((row) => row.role === 'follow')
+          .map((row) => row.competitorId),
+      )
+
       const showNames =
         request.user.role === 'admin' ||
         request.user.role === 'coordinator' ||
@@ -559,6 +637,13 @@ export async function scoreRoutes(app: FastifyInstance) {
       const sortResults = (role: 'lead' | 'follow') =>
         resultRows
           .filter((row) => row.role === role)
+          .map((row) => ({
+            ...row,
+            placement:
+              (role === 'lead' ? leadPlacements : followPlacements).get(
+                row.competitorId,
+              ) ?? null,
+          }))
           .sort(
             (left, right) =>
               right.average - left.average || left.bibNumber - right.bibNumber,
@@ -585,6 +670,9 @@ export async function scoreRoutes(app: FastifyInstance) {
           )
           .where(eq(divisionPairs.divisionId, request.params.divisionId))
 
+        const pairPlacements = placementsFor(
+          pairRows.map((pair) => pair.leadCompetitorId),
+        )
         const pairResults = pairRows
           .map((pair) => {
             const pairScores = lockedScoreRows.filter(
@@ -603,6 +691,7 @@ export async function scoreRoutes(app: FastifyInstance) {
               followFirstName: showNames ? pair.followFirstName : undefined,
               submittedScoreCount: pairScores.length,
               average: Math.round(average * 100) / 100,
+              placement: pairPlacements.get(pair.leadCompetitorId) ?? null,
             }
           })
           .filter((row) => row !== null)
@@ -619,6 +708,7 @@ export async function scoreRoutes(app: FastifyInstance) {
             submitted: judgeStatuses.filter((judge) => judge.status === 'locked'),
             pending: judgeStatuses.filter((judge) => judge.status !== 'locked'),
           },
+          ballots,
           preliminaryResults: {
             leads: [],
             follows: [],
@@ -634,6 +724,7 @@ export async function scoreRoutes(app: FastifyInstance) {
           submitted: judgeStatuses.filter((judge) => judge.status === 'locked'),
           pending: judgeStatuses.filter((judge) => judge.status !== 'locked'),
         },
+        ballots,
         preliminaryResults: {
           leads: sortResults('lead'),
           follows: sortResults('follow'),
