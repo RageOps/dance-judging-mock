@@ -1,0 +1,1 @@
+ALTER TABLE "competitors" ADD COLUMN "checked_in_at" timestamp with time zone;

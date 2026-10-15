@@ -83,6 +83,7 @@ export const competitors = pgTable(
     bibNumber: integer('bib_number').notNull(),
     firstName: text('first_name').notNull(),
     lastName: text('last_name').notNull(),
+    checkedInAt: timestamp('checked_in_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -114,6 +115,7 @@ export const divisionRegistrations = pgTable(
       .notNull()
       .references(() => competitors.id, { onDelete: 'cascade' }),
     role: dancerRole('role').notNull(),
+    checkedInAt: timestamp('checked_in_at', { withTimezone: true }),
   },
   (table) => [
     primaryKey({ columns: [table.divisionId, table.competitorId] }),

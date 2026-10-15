@@ -465,6 +465,16 @@ export default function DivisionsPage() {
                 variant="outlined"
                 onClick={() =>
                   navigate(
+                    `/events/${eventId}/divisions/${division.id}/check-in`,
+                  )
+                }
+              >
+                Check-in
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() =>
+                  navigate(
                     `/events/${eventId}/divisions/${division.id}/status`,
                   )
                 }

@@ -1,6 +1,6 @@
 import cookie from '@fastify/cookie'
 import jwt from '@fastify/jwt'
-import { and, asc, count, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, count, eq, inArray, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import Fastify from 'fastify'
 import { db } from './db/client.js'
@@ -11,6 +11,7 @@ import {
   divisionRegistrations,
   divisions,
   events,
+  scores,
   scoreSubmissions,
 } from './db/schema.js'
 import {
@@ -98,11 +99,45 @@ export function buildApp() {
     { preHandler: requireAuth },
     async (request, reply) => {
       if (!(await requireEventAccess(request, reply, request.params.eventId))) return
-      return db
-        .select()
-        .from(competitors)
-        .where(eq(competitors.eventId, request.params.eventId))
-        .orderBy(asc(competitors.bibNumber))
+      const [competitorRows, registrationRows] = await Promise.all([
+        db
+          .select()
+          .from(competitors)
+          .where(eq(competitors.eventId, request.params.eventId))
+          .orderBy(asc(competitors.bibNumber)),
+        db
+          .select({
+            competitorId: divisionRegistrations.competitorId,
+            divisionId: divisions.id,
+            divisionName: divisions.name,
+            divisionType: divisions.type,
+            role: divisionRegistrations.role,
+          })
+          .from(divisionRegistrations)
+          .innerJoin(
+            divisions,
+            eq(divisions.id, divisionRegistrations.divisionId),
+          )
+          .where(eq(divisions.eventId, request.params.eventId)),
+      ])
+      const divisionsByCompetitor = new Map<
+        string,
+        Array<{ id: string; name: string; type: string; role: string }>
+      >()
+      for (const row of registrationRows) {
+        const list = divisionsByCompetitor.get(row.competitorId) ?? []
+        list.push({
+          id: row.divisionId,
+          name: row.divisionName,
+          type: row.divisionType,
+          role: row.role,
+        })
+        divisionsByCompetitor.set(row.competitorId, list)
+      }
+      return competitorRows.map((competitor) => ({
+        ...competitor,
+        divisions: divisionsByCompetitor.get(competitor.id) ?? [],
+      }))
     },
   )
 
@@ -138,6 +173,75 @@ export function buildApp() {
       })
       if (!competitor) return reply.code(404).send({ message: 'Event not found' })
       return reply.code(201).send(competitor)
+    },
+  )
+
+  app.put<{ Params: { eventId: string; id: string } }>(
+    '/api/events/:eventId/competitors/:id/check-in',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
+      const body = isRecord(request.body) ? request.body : {}
+      const bibNumber =
+        typeof body.bibNumber === 'number' && Number.isInteger(body.bibNumber)
+          ? body.bibNumber
+          : null
+      if (!bibNumber || bibNumber < 1) {
+        return reply.code(400).send({ message: 'A positive bib number is required' })
+      }
+
+      const [competitor] = await db
+        .select()
+        .from(competitors)
+        .where(
+          and(
+            eq(competitors.id, request.params.id),
+            eq(competitors.eventId, request.params.eventId),
+          ),
+        )
+        .limit(1)
+      if (!competitor) return reply.code(404).send({ message: 'Competitor not found' })
+
+      const [bibTaken] = await db
+        .select({ id: competitors.id })
+        .from(competitors)
+        .where(
+          and(
+            eq(competitors.eventId, request.params.eventId),
+            eq(competitors.bibNumber, bibNumber),
+          ),
+        )
+        .limit(1)
+      if (bibTaken && bibTaken.id !== competitor.id) {
+        return reply.code(409).send({ message: 'Bib number is already assigned' })
+      }
+
+      const [updated] = await db
+        .update(competitors)
+        .set({ bibNumber, checkedInAt: sql`now()` })
+        .where(eq(competitors.id, competitor.id))
+        .returning()
+      return updated
+    },
+  )
+
+  app.delete<{ Params: { eventId: string; id: string } }>(
+    '/api/events/:eventId/competitors/:id/check-in',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
+      const [updated] = await db
+        .update(competitors)
+        .set({ checkedInAt: null })
+        .where(
+          and(
+            eq(competitors.id, request.params.id),
+            eq(competitors.eventId, request.params.eventId),
+          ),
+        )
+        .returning()
+      if (!updated) return reply.code(404).send({ message: 'Competitor not found' })
+      return reply.code(204).send()
     },
   )
 
@@ -322,6 +426,7 @@ export function buildApp() {
           firstName: competitors.firstName,
           lastName: competitors.lastName,
           role: divisionRegistrations.role,
+          checkedInAt: divisionRegistrations.checkedInAt,
         })
         .from(divisionRegistrations)
         .innerJoin(
@@ -415,6 +520,116 @@ export function buildApp() {
           )
         }
       })
+      return reply.code(204).send()
+    },
+  )
+
+  app.put<{ Params: { eventId: string; divisionId: string } }>(
+    '/api/events/:eventId/divisions/:divisionId/check-in',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
+      const body = isRecord(request.body) ? request.body : {}
+      const raw = Array.isArray(body.competitorIds) ? body.competitorIds : null
+      if (!raw || raw.some((id) => typeof id !== 'string')) {
+        return reply.code(400).send({ message: 'Competitor IDs are required' })
+      }
+      const competitorIds = [...new Set(raw as string[])]
+
+      const [division] = await db
+        .select()
+        .from(divisions)
+        .where(
+          and(
+            eq(divisions.id, request.params.divisionId),
+            eq(divisions.eventId, request.params.eventId),
+          ),
+        )
+        .limit(1)
+      if (!division) return reply.code(404).send({ message: 'Division not found' })
+
+      const registered = await db
+        .select({ competitorId: divisionRegistrations.competitorId })
+        .from(divisionRegistrations)
+        .where(eq(divisionRegistrations.divisionId, request.params.divisionId))
+      const registeredIds = new Set(registered.map((row) => row.competitorId))
+      if (competitorIds.some((id) => !registeredIds.has(id))) {
+        return reply
+          .code(400)
+          .send({ message: 'Checked-in competitors must be registered in the division' })
+      }
+
+      await db.transaction(async (tx) => {
+        await tx
+          .update(divisionRegistrations)
+          .set({ checkedInAt: null })
+          .where(eq(divisionRegistrations.divisionId, request.params.divisionId))
+        if (competitorIds.length) {
+          await tx
+            .update(divisionRegistrations)
+            .set({ checkedInAt: sql`now()` })
+            .where(
+              and(
+                eq(divisionRegistrations.divisionId, request.params.divisionId),
+                inArray(divisionRegistrations.competitorId, competitorIds),
+              ),
+            )
+        }
+      })
+      return reply.code(204).send()
+    },
+  )
+
+  app.delete<{ Params: { eventId: string; divisionId: string; competitorId: string } }>(
+    '/api/events/:eventId/divisions/:divisionId/registrations/:competitorId',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
+      const [division] = await db
+        .select()
+        .from(divisions)
+        .where(
+          and(
+            eq(divisions.id, request.params.divisionId),
+            eq(divisions.eventId, request.params.eventId),
+          ),
+        )
+        .limit(1)
+      if (!division) return reply.code(404).send({ message: 'Division not found' })
+
+      const scratched = await db.transaction(async (tx) => {
+        const [deleted] = await tx
+          .delete(divisionRegistrations)
+          .where(
+            and(
+              eq(divisionRegistrations.divisionId, request.params.divisionId),
+              eq(divisionRegistrations.competitorId, request.params.competitorId),
+            ),
+          )
+          .returning()
+        if (!deleted) return null
+        await tx
+          .delete(divisionPairs)
+          .where(
+            and(
+              eq(divisionPairs.divisionId, request.params.divisionId),
+              or(
+                eq(divisionPairs.leadCompetitorId, request.params.competitorId),
+                eq(divisionPairs.followCompetitorId, request.params.competitorId),
+              ),
+            ),
+          )
+        await tx
+          .delete(scores)
+          .where(
+            and(
+              eq(scores.divisionId, request.params.divisionId),
+              eq(scores.competitorId, request.params.competitorId),
+            ),
+          )
+        return deleted
+      })
+      if (!scratched) return reply.code(404).send({ message: 'Registration not found' })
       return reply.code(204).send()
     },
   )

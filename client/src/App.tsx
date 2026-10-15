@@ -4,6 +4,8 @@ import JudgeLayout from './components/JudgeLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import { AuthProvider } from './context/AuthContext'
 import { useAuth } from './context/auth'
+import CheckInPage from './pages/CheckInPage'
+import CompetitorCheckInPage from './pages/CompetitorCheckInPage'
 import CompetitorsPage from './pages/CompetitorsPage'
 import CoordinatorsPage from './pages/CoordinatorsPage'
 import DivisionsPage from './pages/DivisionsPage'
@@ -41,8 +43,16 @@ function App() {
                 element={<CompetitorsPage />}
               />
               <Route
+                path="/events/:eventId/competitors/check-in"
+                element={<CompetitorCheckInPage />}
+              />
+              <Route
                 path="/events/:eventId/divisions"
                 element={<DivisionsPage />}
+              />
+              <Route
+                path="/events/:eventId/divisions/:divisionId/check-in"
+                element={<CheckInPage />}
               />
               <Route
                 path="/events/:eventId/divisions/:divisionId/status"

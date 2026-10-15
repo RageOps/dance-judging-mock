@@ -1,5 +1,6 @@
 import {
   Alert,
+  Box,
   Button,
   Card,
   CardActions,
@@ -14,7 +15,7 @@ import {
   Typography,
 } from '@mui/material'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { api, type Competitor, type Event } from '../api/client'
 
 type CompetitorForm = { firstName: string; lastName: string }
@@ -22,6 +23,7 @@ const emptyForm: CompetitorForm = { firstName: '', lastName: '' }
 
 export default function CompetitorsPage() {
   const { eventId = '' } = useParams()
+  const navigate = useNavigate()
   const [event, setEvent] = useState<Event | null>(null)
   const [competitors, setCompetitors] = useState<Competitor[]>([])
   const [form, setForm] = useState(emptyForm)
@@ -99,9 +101,17 @@ export default function CompetitorsPage() {
 
   return (
     <>
-      <Typography variant="h5" component="h1">{event?.name ?? 'Event'} competitors</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h5" component="h1">{event?.name ?? 'Event'} competitors</Typography>
+        <Button
+          variant="outlined"
+          onClick={() => navigate(`/events/${eventId}/competitors/check-in`)}
+        >
+          Competitor check-in
+        </Button>
+      </Box>
       <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Bib numbers are assigned automatically.
+        Bib numbers are provisional until assigned at competitor check-in.
       </Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 

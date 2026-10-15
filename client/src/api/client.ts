@@ -13,12 +13,21 @@ export type Event = {
   createdAt: string
 }
 
+export type CompetitorDivision = {
+  id: string
+  name: string
+  type: 'jack_and_jill' | 'strictly'
+  role: 'lead' | 'follow'
+}
+
 export type Competitor = {
   id: string
   eventId: string
   bibNumber: number
   firstName: string
   lastName: string
+  checkedInAt?: string | null
+  divisions?: CompetitorDivision[]
 }
 
 export type Division = {
@@ -36,6 +45,7 @@ export type Registration = {
   firstName: string
   lastName: string
   role: 'lead' | 'follow'
+  checkedInAt: string | null
 }
 
 export type DivisionPair = {

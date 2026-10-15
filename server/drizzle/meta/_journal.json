@@ -43,6 +43,20 @@
       "when": 1787019096864,
       "tag": "0005_watery_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792042012260,
+      "tag": "0006_check-in",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792042496840,
+      "tag": "0007_competitor-check-in",
+      "breakpoints": true
     }
   ]
 }
