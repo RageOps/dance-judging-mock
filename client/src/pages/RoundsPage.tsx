@@ -164,7 +164,9 @@ function HeatEditor({
                 <MenuItem value={0}>Not in round</MenuItem>
                 {Array.from({ length: heatCount }, (_, index) => (
                   <MenuItem key={index + 1} value={index + 1}>
-                    Heat {index + 1}
+                    {round.type === 'relative_placement'
+                      ? 'In finals'
+                      : `Heat ${index + 1}`}
                   </MenuItem>
                 ))}
               </Select>
