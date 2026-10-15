@@ -1,5 +1,14 @@
 # Project notes
 
+## Conventions
+
+- Back navigation: any page that sits deeper than its section root renders a
+  `Back to <parent>` `Button` above the page title (`sx={{ mb: 1 }}`),
+  navigating to the explicit parent route — not `navigate(-1)`. Pages shared
+  between manager and judge shells (e.g. `DivisionStatusPage`) pick the parent
+  path from `user.role`. See `RoundsPage`/`DivisionStatusPage` for the pattern.
+  When adding a page that drills further into a menu, add the same button.
+
 ## Stack & commands
 
 - React + MUI client (`client/`), Fastify + Drizzle + Postgres server (`server/`).
@@ -14,7 +23,8 @@
 
 - `division_registrations.checked_in_at` (timestamptz, nullable) records check-in.
   Migration: `server/drizzle/0006_check-in.sql`.
-- `GET /api/events/:eventId/divisions/:divisionId/registrations` now returns `checkedInAt`.
+- `GET /api/events/:eventId/divisions/:divisionId/registrations` now returns `checkedInAt`
+  plus `frontDeskCheckedInAt` (the competitor's event-level check-in).
 - `PUT /api/events/:eventId/divisions/:divisionId/check-in` — body `{ competitorIds }`
   replaces the checked-in set (sets `checked_in_at = now()` for listed, clears the rest).
   Requires event-manager access (admin or assigned coordinator). Allowed even after
@@ -25,8 +35,10 @@
   NOT blocked after scoring starts, since scratching a no-show can happen
   mid-competition. The competitor remains in the event and in other divisions.
 - Client: `client/src/pages/CheckInPage.tsx` at
-  `/events/:eventId/divisions/:divisionId/check-in`, linked by a "Check-in"
-  button in each division accordion on `DivisionsPage`. Per-competitor checkbox
+  `/events/:eventId/divisions/:divisionId/check-in`, linked by a "Line up
+  check-in" button in each division accordion on `DivisionsPage`. Titled "Line
+  up check-in"; only competitors with completed front desk check-in
+  (`frontDeskCheckedInAt`) are listed. Per-competitor checkbox
   saves the full checked-in list on each toggle; "Scratch" per row and a bulk
   "Scratch unchecked" button, both with confirm dialogs.
 

@@ -101,6 +101,9 @@ export default function CompetitorsPage() {
 
   return (
     <>
+      <Button onClick={() => navigate('/events')} sx={{ mb: 1 }}>
+        Back to events
+      </Button>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" component="h1">{event?.name ?? 'Event'} competitors</Typography>
         <Button

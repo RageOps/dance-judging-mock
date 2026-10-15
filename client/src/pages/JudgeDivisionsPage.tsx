@@ -51,6 +51,9 @@ export default function JudgeDivisionsPage() {
 
   return (
     <>
+      <Button onClick={() => navigate('/judge/events')} sx={{ mb: 1 }}>
+        Back to events
+      </Button>
       <Typography variant="h5" component="h1">
         {event?.name ?? 'Event'} divisions
       </Typography>

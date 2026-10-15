@@ -17,11 +17,12 @@ import {
   Typography,
 } from '@mui/material'
 import { useCallback, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { api, type Division, type Registration } from '../api/client'
 
 export default function CheckInPage() {
   const { eventId = '', divisionId = '' } = useParams()
+  const navigate = useNavigate()
   const [division, setDivision] = useState<Division | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [error, setError] = useState('')
@@ -53,12 +54,19 @@ export default function CheckInPage() {
     void load()
   }, [load])
 
+  const lineUp = registrations.filter(
+    (registration) => registration.frontDeskCheckedInAt,
+  )
+  const notAtFrontDesk = registrations.length - lineUp.length
   const checkedInIds = new Set(
     registrations
       .filter((registration) => registration.checkedInAt)
       .map((registration) => registration.competitorId),
   )
-  const uncheckedCount = registrations.length - checkedInIds.size
+  const lineUpCheckedIn = lineUp.filter(
+    (registration) => registration.checkedInAt,
+  ).length
+  const uncheckedCount = lineUp.length - lineUpCheckedIn
 
   async function saveCheckIn(ids: Set<string>) {
     setError('')
@@ -123,7 +131,7 @@ export default function CheckInPage() {
 
   async function scratchUnchecked() {
     setConfirmUnchecked(false)
-    for (const registration of registrations.filter(
+    for (const registration of lineUp.filter(
       (item) => !item.checkedInAt,
     )) {
       await scratch(registration)
@@ -140,17 +148,24 @@ export default function CheckInPage() {
 
   return (
     <>
+      <Button
+        onClick={() => navigate(`/events/${eventId}/divisions`)}
+        sx={{ mb: 1 }}
+      >
+        Back to divisions
+      </Button>
       <Typography variant="h5" component="h1" sx={{ mb: 1 }}>
-        {division?.name ?? 'Division'} check-in
+        Line up check-in{division ? ` — ${division.name}` : ''}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Check off competitors as they appear in the line up. Scratch a
-        competitor to remove them from this division.
+        Check off competitors as they appear in the line up. Only competitors
+        who have completed front desk check-in are shown. Scratch a competitor
+        to remove them from this division.
       </Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
         <Chip
-          label={`${checkedInIds.size} checked in`}
+          label={`${lineUpCheckedIn} checked in`}
           color="primary"
           variant="outlined"
         />
@@ -165,13 +180,20 @@ export default function CheckInPage() {
           Scratch unchecked
         </Button>
       </Box>
+      {notAtFrontDesk > 0 && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {notAtFrontDesk} registered competitor
+          {notAtFrontDesk === 1 ? ' is' : 's are'} not shown because front desk
+          check-in is not complete.
+        </Typography>
+      )}
       {!registrations.length && (
         <Typography color="text.secondary">
           No competitors are registered in this division.
         </Typography>
       )}
       <List disablePadding>
-        {registrations.map((registration) => (
+        {lineUp.map((registration) => (
           <ListItem
             key={registration.competitorId}
             disablePadding

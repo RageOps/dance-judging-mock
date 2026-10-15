@@ -434,6 +434,9 @@ export default function DivisionsPage() {
 
   return (
     <>
+      <Button onClick={() => navigate('/events')} sx={{ mb: 1 }}>
+        Back to events
+      </Button>
       <Typography variant="h5" component="h1" sx={{ mb: 3 }}>
         {event?.name ?? 'Event'} divisions
       </Typography>
@@ -535,7 +538,7 @@ export default function DivisionsPage() {
                   )
                 }
               >
-                Check-in
+                Line up check-in
               </Button>
               <Button
                 variant="outlined"

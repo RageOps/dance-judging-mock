@@ -141,6 +141,7 @@ export type Registration = {
   lastName: string
   role: 'lead' | 'follow'
   checkedInAt: string | null
+  frontDeskCheckedInAt: string | null
 }
 
 export type DivisionPair = {

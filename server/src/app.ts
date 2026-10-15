@@ -450,6 +450,7 @@ export function buildApp() {
           lastName: competitors.lastName,
           role: divisionRegistrations.role,
           checkedInAt: divisionRegistrations.checkedInAt,
+          frontDeskCheckedInAt: competitors.checkedInAt,
         })
         .from(divisionRegistrations)
         .innerJoin(

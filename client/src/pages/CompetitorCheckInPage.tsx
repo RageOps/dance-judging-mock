@@ -16,11 +16,12 @@ import {
   Typography,
 } from '@mui/material'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { api, type Competitor, type Event } from '../api/client'
 
 export default function CompetitorCheckInPage() {
   const { eventId = '' } = useParams()
+  const navigate = useNavigate()
   const [event, setEvent] = useState<Event | null>(null)
   const [competitors, setCompetitors] = useState<Competitor[]>([])
   const [search, setSearch] = useState('')
@@ -126,6 +127,12 @@ export default function CompetitorCheckInPage() {
 
   return (
     <>
+      <Button
+        onClick={() => navigate(`/events/${eventId}/competitors`)}
+        sx={{ mb: 1 }}
+      >
+        Back to competitors
+      </Button>
       <Typography variant="h5" component="h1" sx={{ mb: 1 }}>
         {event?.name ?? 'Event'} competitor check-in
       </Typography>
