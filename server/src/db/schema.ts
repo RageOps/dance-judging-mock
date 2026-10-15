@@ -7,6 +7,7 @@ import {
   pgEnum,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -323,5 +324,34 @@ export const placements = pgTable(
       name: 'placements_submission_fk',
     }).onDelete('cascade'),
     check('placements_rank_check', sql`${table.rank} >= 1`),
+  ],
+)
+
+export const roundImpressions = pgTable(
+  'round_impressions',
+  {
+    judgeId: uuid('judge_id').notNull(),
+    roundId: uuid('round_id').notNull(),
+    competitorId: uuid('competitor_id')
+      .notNull()
+      .references(() => competitors.id, { onDelete: 'cascade' }),
+    score: real('score').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.judgeId, table.roundId, table.competitorId],
+    }),
+    foreignKey({
+      columns: [table.judgeId, table.roundId],
+      foreignColumns: [roundSubmissions.judgeId, roundSubmissions.roundId],
+      name: 'round_impressions_submission_fk',
+    }).onDelete('cascade'),
+    check(
+      'round_impressions_score_check',
+      sql`${table.score} >= 1 and ${table.score} <= 10`,
+    ),
   ],
 )

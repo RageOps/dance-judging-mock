@@ -107,7 +107,12 @@ function HeatEditor({
       }
       await api(
         `/events/${eventId}/divisions/${division.id}/rounds/${round.id}/heats`,
-        { method: 'PUT', body: JSON.stringify({ heats }) },
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            heats: heats.map((competitorIds) => ({ competitorIds })),
+          }),
+        },
       )
       onSaved()
     } catch (reason) {
@@ -241,7 +246,12 @@ function CallbackResults({
       }
       await api(
         `/events/${eventId}/divisions/${division.id}/rounds/${nextRound.id}/heats`,
-        { method: 'PUT', body: JSON.stringify({ heats }) },
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            heats: heats.map((competitorIds) => ({ competitorIds })),
+          }),
+        },
       )
       onAdvanced()
     } catch (reason) {
