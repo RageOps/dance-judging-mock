@@ -243,8 +243,8 @@ export default function ScoringPage() {
                     ? competitor.leadFirstName && competitor.followFirstName
                       ? `${competitor.leadFirstName} & ${competitor.followFirstName}`
                       : undefined
-                    : competitor.firstName && competitor.lastName
-                      ? `${competitor.firstName} ${competitor.lastName}`
+                    : competitor.firstName
+                      ? `${competitor.firstName}`
                       : undefined
                 }
                 role={isPairMode ? undefined : competitor.role}

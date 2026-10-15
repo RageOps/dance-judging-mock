@@ -23,11 +23,20 @@ export default function JudgeScoreTable({
   resultHeaders: string[]
 }) {
   return (
-    <TableContainer sx={{ overflowX: 'auto' }}>
+    <TableContainer sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell>Entry</TableCell>
+            <TableCell
+              sx={{
+                position: 'sticky',
+                left: 0,
+                zIndex: 1,
+                bgcolor: 'background.paper',
+              }}
+            >
+              Entry
+            </TableCell>
             {judges.map((judge) => (
               <TableCell key={judge.id} align="center">
                 {judge.label}
@@ -44,7 +53,17 @@ export default function JudgeScoreTable({
         <TableBody>
           {rows.map((row) => (
             <TableRow key={row.key}>
-              <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.label}</TableCell>
+              <TableCell
+                sx={{
+                  whiteSpace: 'nowrap',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 1,
+                  bgcolor: 'background.paper',
+                }}
+              >
+                {row.label}
+              </TableCell>
               {judges.map((judge) => (
                 <TableCell key={judge.id} align="center">
                   {cell(judge.id, row.key) ?? '—'}

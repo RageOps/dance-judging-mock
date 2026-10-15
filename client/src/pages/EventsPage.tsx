@@ -52,7 +52,7 @@ export default function EventsPage() {
 
   return (
     <>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" component="h1">Events</Typography>
         {user?.role === 'admin' && (
           <Button variant="contained" onClick={() => setOpen(true)}>

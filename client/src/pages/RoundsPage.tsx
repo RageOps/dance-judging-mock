@@ -40,7 +40,7 @@ import {
   type RoundType,
 } from '../api/client'
 import JudgeScoreTable from '../components/JudgeScoreTable'
-import { judgeLabel } from '../utils/format'
+import { competitorLabel, judgeLabel } from '../utils/format'
 
 type PoolEntry = {
   competitorId: string
@@ -55,22 +55,7 @@ const statusColor: Record<RoundStatus, 'default' | 'warning' | 'success'> = {
   complete: 'success',
 }
 
-function entryLabel(entry: {
-  bibNumber: number
-  firstName?: string
-  lastName?: string
-  followBibNumber?: number
-  followFirstName?: string
-}) {
-  const name =
-    entry.firstName && entry.lastName
-      ? ` ${entry.firstName} ${entry.lastName}`
-      : ''
-  const follow = entry.followBibNumber
-    ? ` & #${entry.followBibNumber}${entry.followFirstName ? ` ${entry.followFirstName}` : ''}`
-    : ''
-  return `#${entry.bibNumber}${name}${follow}`
-}
+const entryLabel = competitorLabel
 
 function HeatEditor({
   eventId,
@@ -211,66 +196,76 @@ function HeatEditor({
             <ListItem
               key={entry.competitorId}
               disableGutters
-              secondaryAction={
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  {pairsFinal && inRound && (
-                    <Select
-                      size="small"
-                      displayEmpty
-                      value={partners[entry.competitorId] ?? ''}
-                      onChange={(selectEvent) =>
-                        setPartners((current) => ({
-                          ...current,
-                          [entry.competitorId]: selectEvent.target.value,
-                        }))
-                      }
-                      sx={{ minWidth: 140 }}
-                    >
-                      <MenuItem value="">
-                        <em>Pick a follow</em>
-                      </MenuItem>
-                      {promotedFollows.map((follow) => (
-                        <MenuItem
-                          key={follow.competitorId}
-                          value={follow.competitorId}
-                          disabled={
-                            usedPartners.has(follow.competitorId) &&
-                            partners[entry.competitorId] !==
-                              follow.competitorId
-                          }
-                        >
-                          #{follow.bibNumber} {follow.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  )}
-                  <Select
-                    size="small"
-                    value={String(assignments[entry.competitorId] ?? 0)}
-                    onChange={(selectEvent) =>
-                      setAssignments((current) => ({
-                        ...current,
-                        [entry.competitorId]: Number(selectEvent.target.value),
-                      }))
-                    }
-                    sx={{ minWidth: 120 }}
-                  >
-                    <MenuItem value={0}>Not in round</MenuItem>
-                    {Array.from({ length: heatCount }, (_, index) => (
-                      <MenuItem key={index + 1} value={index + 1}>
-                        {round.type === 'relative_placement'
-                          ? 'In finals'
-                          : `Heat ${index + 1}`}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </Box>
-              }
+              sx={{
+                flexDirection: { xs: 'column', sm: 'row' },
+                alignItems: { xs: 'stretch', sm: 'center' },
+                gap: 1,
+                py: { xs: 1, sm: 0 },
+              }}
             >
               <ListItemText
                 primary={`#${entry.bibNumber} ${entry.label}`}
                 secondary={!pairsFinal && entry.role ? entry.role : undefined}
               />
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 1,
+                  justifyContent: { xs: 'flex-end', sm: 'flex-start' },
+                  flexShrink: 0,
+                }}
+              >
+                {pairsFinal && inRound && (
+                  <Select
+                    size="small"
+                    displayEmpty
+                    value={partners[entry.competitorId] ?? ''}
+                    onChange={(selectEvent) =>
+                      setPartners((current) => ({
+                        ...current,
+                        [entry.competitorId]: selectEvent.target.value,
+                      }))
+                    }
+                    sx={{ minWidth: 140, flex: { xs: 1, sm: 'none' } }}
+                  >
+                    <MenuItem value="">
+                      <em>Pick a follow</em>
+                    </MenuItem>
+                    {promotedFollows.map((follow) => (
+                      <MenuItem
+                        key={follow.competitorId}
+                        value={follow.competitorId}
+                        disabled={
+                          usedPartners.has(follow.competitorId) &&
+                          partners[entry.competitorId] !== follow.competitorId
+                        }
+                      >
+                        #{follow.bibNumber} {follow.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                )}
+                <Select
+                  size="small"
+                  value={String(assignments[entry.competitorId] ?? 0)}
+                  onChange={(selectEvent) =>
+                    setAssignments((current) => ({
+                      ...current,
+                      [entry.competitorId]: Number(selectEvent.target.value),
+                    }))
+                  }
+                  sx={{ minWidth: 120, flex: { xs: 1, sm: 'none' } }}
+                >
+                  <MenuItem value={0}>Not in round</MenuItem>
+                  {Array.from({ length: heatCount }, (_, index) => (
+                    <MenuItem key={index + 1} value={index + 1}>
+                      {round.type === 'relative_placement'
+                        ? 'In finals'
+                        : `Heat ${index + 1}`}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </Box>
             </ListItem>
           )
         })}
@@ -288,34 +283,12 @@ function HeatEditor({
               <ListItem
                 key={entry.competitorId}
                 disableGutters
-                secondaryAction={
-                  <Select
-                    size="small"
-                    value={String(assignments[entry.competitorId] ?? 0)}
-                    onChange={(selectEvent) => {
-                      const next = Number(selectEvent.target.value)
-                      setAssignments((current) => ({
-                        ...current,
-                        [entry.competitorId]: next,
-                      }))
-                      if (next === 0) {
-                        // Clear pairings that used this follow.
-                        setPartners((current) =>
-                          Object.fromEntries(
-                            Object.entries(current).map(([leadId, followId]) => [
-                              leadId,
-                              followId === entry.competitorId ? '' : followId,
-                            ]),
-                          ),
-                        )
-                      }
-                    }}
-                    sx={{ minWidth: 120 }}
-                  >
-                    <MenuItem value={0}>Not in round</MenuItem>
-                    <MenuItem value={1}>In finals</MenuItem>
-                  </Select>
-                }
+                sx={{
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  alignItems: { xs: 'stretch', sm: 'center' },
+                  gap: 1,
+                  py: { xs: 1, sm: 0 },
+                }}
               >
                 <ListItemText
                   primary={`#${entry.bibNumber} ${entry.label}`}
@@ -325,6 +298,32 @@ function HeatEditor({
                       : undefined
                   }
                 />
+                <Select
+                  size="small"
+                  value={String(assignments[entry.competitorId] ?? 0)}
+                  onChange={(selectEvent) => {
+                    const next = Number(selectEvent.target.value)
+                    setAssignments((current) => ({
+                      ...current,
+                      [entry.competitorId]: next,
+                    }))
+                    if (next === 0) {
+                      // Clear pairings that used this follow.
+                      setPartners((current) =>
+                        Object.fromEntries(
+                          Object.entries(current).map(([leadId, followId]) => [
+                            leadId,
+                            followId === entry.competitorId ? '' : followId,
+                          ]),
+                        ),
+                      )
+                    }
+                  }}
+                  sx={{ minWidth: 120 }}
+                >
+                  <MenuItem value={0}>Not in round</MenuItem>
+                  <MenuItem value={1}>In finals</MenuItem>
+                </Select>
               </ListItem>
             ))}
             {!follows.length && (
@@ -490,7 +489,7 @@ function CallbackResults({
       ))}
       {nextRound && (
         <Box
-          sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1 }}
+          sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1, flexWrap: 'wrap' }}
         >
           <TextField
             label="Top N"
@@ -586,8 +585,16 @@ function RoundCard({
   return (
     <Accordion>
       <AccordionSummary>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-          <Typography sx={{ flexGrow: 1 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            width: '100%',
+            flexWrap: 'wrap',
+          }}
+        >
+          <Typography sx={{ flexGrow: 1, minWidth: '40%' }}>
             {round.position}. {round.name}
           </Typography>
           <Chip
@@ -727,7 +734,7 @@ export default function RoundsPage() {
           pairs.map((pair) => ({
             competitorId: pair.leadCompetitorId,
             bibNumber: pair.leadBib,
-            label: `${pair.leadFirstName} ${pair.leadLastName} & ${pair.followFirstName} ${pair.followLastName}`,
+            label: `${pair.leadFirstName} & ${pair.followFirstName}`,
           })),
         )
       } else {
@@ -738,7 +745,7 @@ export default function RoundsPage() {
           registrations.map((row) => ({
             competitorId: row.competitorId,
             bibNumber: row.bibNumber,
-            label: `${row.firstName} ${row.lastName}`,
+            label: `${row.firstName}`,
             role: row.role,
           })),
         )

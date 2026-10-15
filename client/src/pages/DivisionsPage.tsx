@@ -136,11 +136,11 @@ function DivisionPairings({
         {leads.map((lead) => (
           <FormControl key={lead.competitorId} fullWidth>
             <InputLabel id={`pair-${lead.competitorId}-label`}>
-              #{lead.bibNumber} {lead.firstName} {lead.lastName}
+              #{lead.bibNumber} {lead.firstName}
             </InputLabel>
             <Select
               labelId={`pair-${lead.competitorId}-label`}
-              label={`#${lead.bibNumber} ${lead.firstName} ${lead.lastName}`}
+              label={`#${lead.bibNumber} ${lead.firstName}`}
               value={pairs[lead.competitorId] ?? ''}
               onChange={(event) =>
                 setPairs((current) => ({
@@ -151,7 +151,7 @@ function DivisionPairings({
             >
               {follows.map((follow) => (
                 <MenuItem key={follow.competitorId} value={follow.competitorId}>
-                  #{follow.bibNumber} {follow.firstName} {follow.lastName}
+                  #{follow.bibNumber} {follow.firstName}
                 </MenuItem>
               ))}
             </Select>
@@ -279,7 +279,7 @@ function DivisionAssignments({
               >
                 <Checkbox checked={selected} tabIndex={-1} disableRipple />
                 <ListItemText
-                  primary={`#${competitor.bibNumber} ${competitor.firstName} ${competitor.lastName}`}
+                  primary={`#${competitor.bibNumber} ${competitor.firstName}`}
                 />
               </ListItemButton>
             </ListItem>
@@ -488,8 +488,8 @@ export default function DivisionsPage() {
       {divisions.map((division) => (
         <Accordion key={division.id}>
           <AccordionSummary>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-              <Typography sx={{ flexGrow: 1 }}>{division.name}</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', flexWrap: 'wrap' }}>
+              <Typography sx={{ flexGrow: 1, minWidth: '40%' }}>{division.name}</Typography>
               <Chip
                 size="small"
                 label={division.type === 'jack_and_jill' ? 'Jack & Jill' : 'Strictly'}

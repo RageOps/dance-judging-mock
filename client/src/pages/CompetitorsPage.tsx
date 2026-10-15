@@ -104,7 +104,7 @@ export default function CompetitorsPage() {
       <Button onClick={() => navigate('/events')} sx={{ mb: 1 }}>
         Back to events
       </Button>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" component="h1">{event?.name ?? 'Event'} competitors</Typography>
         <Button
           variant="outlined"
@@ -139,7 +139,7 @@ export default function CompetitorsPage() {
           <Card key={competitor.id} variant="outlined">
             <CardContent>
               <Typography variant="h6">
-                #{competitor.bibNumber} — {competitor.firstName} {competitor.lastName}
+                #{competitor.bibNumber} — {competitor.firstName}
               </Typography>
             </CardContent>
             <CardActions>

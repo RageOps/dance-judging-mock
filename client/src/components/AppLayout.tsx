@@ -63,7 +63,7 @@ export default function AppLayout() {
           sx={{
             display: 'flex',
             position: 'sticky',
-            top: 64,
+            top: { xs: 56, sm: 64 },
             zIndex: 1,
             bgcolor: 'background.paper',
             borderBottom: 1,

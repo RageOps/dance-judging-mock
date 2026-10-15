@@ -24,7 +24,7 @@ import {
 } from '../api/client'
 import { useAuth } from '../context/auth'
 import JudgeScoreTable from '../components/JudgeScoreTable'
-import { judgeLabel } from '../utils/format'
+import { competitorLabel, judgeLabel } from '../utils/format'
 
 function scopeLabel(
   scope: DivisionJudgeStatus['scope'],
@@ -97,19 +97,7 @@ function JudgeList({
   )
 }
 
-function resultRowLabel(row: {
-  bibNumber: number
-  firstName?: string
-  lastName?: string
-  followBibNumber?: number
-  followFirstName?: string
-}) {
-  const name = row.firstName ? ` ${row.firstName} ${row.lastName ?? ''}` : ''
-  const follow = row.followBibNumber
-    ? ` & #${row.followBibNumber}${row.followFirstName ? ` ${row.followFirstName}` : ''}`
-    : ''
-  return `#${row.bibNumber}${name}${follow}`
-}
+const resultRowLabel = competitorLabel
 
 function RoundResultsTable({
   results,
@@ -291,6 +279,7 @@ function RoundsStatusList({
                   alignItems: 'center',
                   gap: 1,
                   mb: 1,
+                  flexWrap: 'wrap',
                 }}
               >
                 <Typography variant="h6">
@@ -396,7 +385,7 @@ export default function DivisionStatusPage() {
               <Box
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
                   gap: 2,
                 }}
               >

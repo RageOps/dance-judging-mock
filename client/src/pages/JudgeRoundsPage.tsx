@@ -107,6 +107,7 @@ export default function JudgeRoundsPage() {
                       alignItems: 'flex-start',
                       gap: 1,
                       mb: 1,
+                      flexWrap: 'wrap',
                     }}
                   >
                     <Typography variant="h6">

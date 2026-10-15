@@ -35,8 +35,8 @@ function entryName(entry: RoundSheetEntry) {
     const follow = entry.followFirstName ? ` ${entry.followFirstName}` : ''
     return `#${entry.bibNumber}${lead} & #${entry.followBibNumber}${follow}`
   }
-  return entry.firstName && entry.lastName
-    ? `#${entry.bibNumber} ${entry.firstName} ${entry.lastName}`
+  return entry.firstName
+    ? `#${entry.bibNumber} ${entry.firstName}`
     : `#${entry.bibNumber}`
 }
 
