@@ -47,6 +47,36 @@
   Search by name/bib; row click opens a dialog listing divisions and a bib
   field; save checks in, "Undo check-in" clears it.
 
+## Rounds / heats / callback & relative-placement scoring (added 2026-10-15)
+
+- `divisions.scoring_mode`: `numeric` (legacy 1–10 flow) or `rounds`. Set at
+  division creation on `DivisionsPage`; round management at
+  `/events/:eventId/divisions/:divisionId/rounds` (`RoundsPage`).
+- `division_rounds` (ordered by `position`, `type` = `callback` |
+  `relative_placement`, `status` = `pending` | `active` | `complete`). Judges
+  may only submit while a round is `active`. `heats` + `heat_entries` group
+  entries per round; entries are competitor ids (Strictly uses the pair's lead
+  id, matching the numeric flow). `relative_placement` rounds are restricted to
+  a single heat.
+- `round_submissions` mirrors `score_submissions` but keyed `(judge_id,
+  round_id)` with the same editing/locked + revision optimistic-lock pattern.
+  `callback_votes` stores yes/alternate/no; `placements` stores rank (must be a
+  permutation 1..N over all entries — enforced server-side).
+- Results: `GET /api/events/:e/divisions/:d/rounds/:r/results`. Callback
+  tallies report yes/alt/no counts and `points` (yes=1, alt=0.5). RP results
+  are computed by `server/src/relativePlacement.ts` (majority of cumulative
+  ranks, tie-break by count then summed ranks then deeper columns; exact ties
+  share a placement). Both exclude ballots that aren't locked.
+- Advancement is coordinator-driven: `RoundsPage` results show sorted tallies
+  with checkboxes, "Select top N", and "Advance to next round" which writes the
+  next round's heats (round-robin across its heats; single heat for finals).
+- Judge flow: `JudgeRoundsPage` lists rounds (gated on `pending`);
+  `RoundScoringPage` renders Y/Alt/No toggle buttons per entry (with lead/
+  follow/both scope for J&J) or rank selects for finals.
+- Scratching a competitor now also deletes their heat entries, callback votes,
+  and placements across the division's rounds. Registration/pair edits are
+  blocked once any round submission exists.
+
 ## Assumptions made
 
 - Bib numbers are still auto-assigned provisionally at registration (avoids
@@ -66,3 +96,11 @@
   preliminary results clean.
 - Re-saving registrations via the existing PUT endpoint re-creates
   registration rows, which naturally resets check-in state.
+- In round mode, unmarked callback entries are submitted as "no" — judges
+  explicitly choose Yes/Alt/No but blank defaults to No on submit.
+- Head judge: `judge_event_assignments.is_head_judge` (one per event, set on
+  JudgesPage create/edit). RP ties surviving all majority columns are broken
+  by the head judge's rank; callback tally sort order uses points, then yes
+  count, then the head judge's vote. Competitors still tied share a placement.
+- `placement` column name is `rank` on the `placements` table (raw judge
+  input) vs computed `placement` in results output.

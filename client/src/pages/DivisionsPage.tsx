@@ -299,6 +299,7 @@ export default function DivisionsPage() {
   const [divisions, setDivisions] = useState<Division[]>([])
   const [name, setName] = useState('')
   const [type, setType] = useState<'jack_and_jill' | 'strictly'>('jack_and_jill')
+  const [scoringMode, setScoringMode] = useState<'numeric' | 'rounds'>('numeric')
   const [showCompetitorNames, setShowCompetitorNames] = useState(true)
   const [error, setError] = useState('')
   const [pairingsVersion, setPairingsVersion] = useState(0)
@@ -328,7 +329,7 @@ export default function DivisionsPage() {
     try {
       const created = await api<Division>(`/events/${eventId}/divisions`, {
         method: 'POST',
-        body: JSON.stringify({ name, type, showCompetitorNames }),
+        body: JSON.stringify({ name, type, scoringMode, showCompetitorNames }),
       })
       setDivisions((current) => [...current, { ...created, registrationCount: 0 }])
       setName('')
@@ -398,6 +399,22 @@ export default function DivisionsPage() {
                 <MenuItem value="strictly">Strictly</MenuItem>
               </Select>
             </FormControl>
+            <FormControl>
+              <InputLabel id="division-scoring-label">Scoring</InputLabel>
+              <Select
+                labelId="division-scoring-label"
+                label="Scoring"
+                value={scoringMode}
+                onChange={(event) =>
+                  setScoringMode(event.target.value as 'numeric' | 'rounds')
+                }
+              >
+                <MenuItem value="numeric">Numeric (1–10)</MenuItem>
+                <MenuItem value="rounds">
+                  Rounds (callback + relative placement)
+                </MenuItem>
+              </Select>
+            </FormControl>
             <FormControlLabel
               control={
                 <Switch
@@ -430,6 +447,11 @@ export default function DivisionsPage() {
                 size="small"
                 label={division.type === 'jack_and_jill' ? 'Jack & Jill' : 'Strictly'}
               />
+              <Chip
+                size="small"
+                variant="outlined"
+                label={division.scoringMode === 'rounds' ? 'Rounds' : 'Numeric'}
+              />
               <Chip size="small" variant="outlined" label={division.registrationCount} />
             </Box>
           </AccordionSummary>
@@ -461,6 +483,18 @@ export default function DivisionsPage() {
                 }
                 label="Show names to judges"
               />
+              {division.scoringMode === 'rounds' && (
+                <Button
+                  variant="outlined"
+                  onClick={() =>
+                    navigate(
+                      `/events/${eventId}/divisions/${division.id}/rounds`,
+                    )
+                  }
+                >
+                  Rounds
+                </Button>
+              )}
               <Button
                 variant="outlined"
                 onClick={() =>

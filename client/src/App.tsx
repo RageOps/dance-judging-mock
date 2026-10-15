@@ -13,8 +13,11 @@ import DivisionStatusPage from './pages/DivisionStatusPage'
 import EventsPage from './pages/EventsPage'
 import JudgeDivisionsPage from './pages/JudgeDivisionsPage'
 import JudgeEventsPage from './pages/JudgeEventsPage'
+import JudgeRoundsPage from './pages/JudgeRoundsPage'
 import JudgesPage from './pages/JudgesPage'
 import LoginPage from './pages/LoginPage'
+import RoundScoringPage from './pages/RoundScoringPage'
+import RoundsPage from './pages/RoundsPage'
 import ScoringPage from './pages/ScoringPage'
 
 function managerHome(role: string) {
@@ -55,6 +58,10 @@ function App() {
                 element={<CheckInPage />}
               />
               <Route
+                path="/events/:eventId/divisions/:divisionId/rounds"
+                element={<RoundsPage />}
+              />
+              <Route
                 path="/events/:eventId/divisions/:divisionId/status"
                 element={<DivisionStatusPage />}
               />
@@ -78,6 +85,14 @@ function App() {
               <Route
                 path="/judge/events/:eventId/divisions/:divisionId/score"
                 element={<ScoringPage />}
+              />
+              <Route
+                path="/judge/events/:eventId/divisions/:divisionId/rounds"
+                element={<JudgeRoundsPage />}
+              />
+              <Route
+                path="/judge/events/:eventId/divisions/:divisionId/rounds/:roundId/score"
+                element={<RoundScoringPage />}
               />
               <Route
                 path="/judge/events/:eventId/divisions/:divisionId/status"

@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs'
-import { and, asc, count, eq, inArray } from 'drizzle-orm'
+import { and, asc, count, eq, inArray, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { db } from '../db/client.js'
 import {
@@ -35,6 +35,7 @@ async function listJudges() {
       judgeId: judgeEventAssignments.judgeId,
       eventId: events.id,
       eventName: events.name,
+      isHead: judgeEventAssignments.isHeadJudge,
     })
     .from(judgeEventAssignments)
     .innerJoin(events, eq(events.id, judgeEventAssignments.eventId))
@@ -43,7 +44,11 @@ async function listJudges() {
     ...judge,
     events: assignments
       .filter((assignment) => assignment.judgeId === judge.id)
-      .map(({ eventId, eventName }) => ({ id: eventId, name: eventName })),
+      .map(({ eventId, eventName, isHead }) => ({
+        id: eventId,
+        name: eventName,
+        isHead,
+      })),
   }))
 }
 
@@ -59,7 +64,15 @@ export async function judgeRoutes(app: FastifyInstance) {
     const eventIds = Array.isArray(body.eventIds)
       ? [...new Set(body.eventIds.filter((id): id is string => typeof id === 'string'))]
       : []
+    const headEventIds = Array.isArray(body.headEventIds)
+      ? [...new Set(body.headEventIds.filter((id): id is string => typeof id === 'string'))]
+      : []
 
+    if (headEventIds.some((id) => !eventIds.includes(id))) {
+      return reply
+        .code(400)
+        .send({ message: 'Head judge events must be assigned events' })
+    }
     if (!firstName || !lastName || !email || !password || password.length < 8) {
       return reply.code(400).send({
         message: 'First name, last name, email, and an 8+ character password are required',
@@ -100,9 +113,25 @@ export async function judgeRoutes(app: FastifyInstance) {
         if (!created) throw new Error('CREATE_FAILED')
 
         if (eventIds.length) {
+          const headSet = new Set(headEventIds)
           await tx.insert(judgeEventAssignments).values(
-            eventIds.map((eventId) => ({ judgeId: created.id, eventId })),
+            eventIds.map((eventId) => ({
+              judgeId: created.id,
+              eventId,
+              isHeadJudge: headSet.has(eventId),
+            })),
           )
+          if (headEventIds.length) {
+            await tx
+              .update(judgeEventAssignments)
+              .set({ isHeadJudge: false })
+              .where(
+                and(
+                  inArray(judgeEventAssignments.eventId, headEventIds),
+                  sql`${judgeEventAssignments.judgeId} <> ${created.id}`,
+                ),
+              )
+          }
         }
         return created
       })
@@ -176,8 +205,17 @@ export async function judgeRoutes(app: FastifyInstance) {
       const eventIds = Array.isArray(body.eventIds)
         ? [...new Set(body.eventIds.filter((id): id is string => typeof id === 'string'))]
         : null
-      if (!eventIds || eventIds.some((id) => !uuidPattern.test(id))) {
-        return reply.code(400).send({ message: 'Valid eventIds are required' })
+      const headEventIds = Array.isArray(body.headEventIds)
+        ? [...new Set(body.headEventIds.filter((id): id is string => typeof id === 'string'))]
+        : []
+      if (
+        !eventIds ||
+        eventIds.some((id) => !uuidPattern.test(id)) ||
+        headEventIds.some((id) => !eventIds.includes(id))
+      ) {
+        return reply.code(400).send({
+          message: 'Valid eventIds are required; head events must be assigned',
+        })
       }
 
       const result = await db.transaction(async (tx) => {
@@ -202,9 +240,26 @@ export async function judgeRoutes(app: FastifyInstance) {
           .delete(judgeEventAssignments)
           .where(eq(judgeEventAssignments.judgeId, judge.id))
         if (eventIds.length) {
+          const headSet = new Set(headEventIds)
           await tx.insert(judgeEventAssignments).values(
-            eventIds.map((eventId) => ({ judgeId: judge.id, eventId })),
+            eventIds.map((eventId) => ({
+              judgeId: judge.id,
+              eventId,
+              isHeadJudge: headSet.has(eventId),
+            })),
           )
+        }
+        // Only one head judge per event: clear the flag on other judges.
+        if (headEventIds.length) {
+          await tx
+            .update(judgeEventAssignments)
+            .set({ isHeadJudge: false })
+            .where(
+              and(
+                inArray(judgeEventAssignments.eventId, headEventIds),
+                sql`${judgeEventAssignments.judgeId} <> ${judge.id}`,
+              ),
+            )
         }
         return 'OK'
       })

@@ -474,6 +474,7 @@ export async function scoreRoutes(app: FastifyInstance) {
           id: users.id,
           firstName: users.firstName,
           lastName: users.lastName,
+          isHead: judgeEventAssignments.isHeadJudge,
         })
         .from(judgeEventAssignments)
         .innerJoin(users, eq(users.id, judgeEventAssignments.judgeId))

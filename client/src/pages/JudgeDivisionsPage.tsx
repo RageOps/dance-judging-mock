@@ -67,7 +67,9 @@ export default function JudgeDivisionsPage() {
             <CardActionArea
               onClick={() =>
                 navigate(
-                  `/judge/events/${eventId}/divisions/${division.id}/score`,
+                  division.scoringMode === 'rounds'
+                    ? `/judge/events/${eventId}/divisions/${division.id}/rounds`
+                    : `/judge/events/${eventId}/divisions/${division.id}/score`,
                 )
               }
             >
@@ -91,6 +93,7 @@ export default function JudgeDivisionsPage() {
                 <Typography color="text.secondary">
                   {division.type === 'jack_and_jill' ? 'Jack & Jill' : 'Strictly'}
                   {' · '}
+                  {division.scoringMode === 'rounds' ? 'Rounds · ' : ''}
                   {division.competitorCount} competitors
                 </Typography>
               </CardContent>

@@ -31,6 +31,7 @@ type JudgeForm = {
   email: string
   password: string
   eventIds: string[]
+  headEventIds: string[]
 }
 
 const emptyForm: JudgeForm = {
@@ -39,6 +40,7 @@ const emptyForm: JudgeForm = {
   email: '',
   password: '',
   eventIds: [],
+  headEventIds: [],
 }
 
 function EventSelect({
@@ -73,6 +75,53 @@ function EventSelect({
         }
       >
         {events.map((event) => (
+          <MenuItem key={event.id} value={event.id}>
+            <Checkbox checked={value.includes(event.id)} />
+            <ListItemText primary={event.name} />
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+  )
+}
+
+function HeadEventSelect({
+  events,
+  assignedEventIds,
+  value,
+  onChange,
+}: {
+  events: Event[]
+  assignedEventIds: string[]
+  value: string[]
+  onChange: (eventIds: string[]) => void
+}) {
+  const assigned = events.filter((event) => assignedEventIds.includes(event.id))
+  return (
+    <FormControl fullWidth disabled={!assigned.length}>
+      <InputLabel id="judge-head-events-label">
+        Head judge for events
+      </InputLabel>
+      <Select
+        labelId="judge-head-events-label"
+        multiple
+        value={value}
+        onChange={(event) =>
+          onChange(
+            typeof event.target.value === 'string'
+              ? event.target.value.split(',')
+              : event.target.value,
+          )
+        }
+        input={<OutlinedInput label="Head judge for events" />}
+        renderValue={(selected) =>
+          assigned
+            .filter((event) => selected.includes(event.id))
+            .map((event) => event.name)
+            .join(', ')
+        }
+      >
+        {assigned.map((event) => (
           <MenuItem key={event.id} value={event.id}>
             <Checkbox checked={value.includes(event.id)} />
             <ListItemText primary={event.name} />
@@ -134,6 +183,9 @@ export default function JudgesPage() {
       email: judge.email,
       password: '',
       eventIds: judge.events.map((event) => event.id),
+      headEventIds: judge.events
+        .filter((event) => event.isHead)
+        .map((event) => event.id),
     })
   }
 
@@ -153,7 +205,10 @@ export default function JudgesPage() {
       })
       await api<void>(`/judges/${editing.id}/events`, {
         method: 'PUT',
-        body: JSON.stringify({ eventIds: editing.eventIds }),
+        body: JSON.stringify({
+          eventIds: editing.eventIds,
+          headEventIds: editing.headEventIds,
+        }),
       })
       setEditing(null)
       setSuccess('Judge profile updated')
@@ -237,7 +292,21 @@ export default function JudgesPage() {
             <EventSelect
               events={events}
               value={form.eventIds}
-              onChange={(eventIds) => setForm({ ...form, eventIds })}
+              onChange={(eventIds) =>
+                setForm({
+                  ...form,
+                  eventIds,
+                  headEventIds: form.headEventIds.filter((id) =>
+                    eventIds.includes(id),
+                  ),
+                })
+              }
+            />
+            <HeadEventSelect
+              events={events}
+              assignedEventIds={form.eventIds}
+              value={form.headEventIds}
+              onChange={(headEventIds) => setForm({ ...form, headEventIds })}
             />
             <Button type="submit" variant="contained" size="large">
               Create judge
@@ -259,7 +328,10 @@ export default function JudgesPage() {
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                 {judge.events.length ? (
                   judge.events.map((event) => (
-                    <Chip key={event.id} label={event.name ?? 'Assigned event'} />
+                    <Chip
+                      key={event.id}
+                      label={`${event.name ?? 'Assigned event'}${event.isHead ? ' (head)' : ''}`}
+                    />
                   ))
                 ) : (
                   <Chip label="No events assigned" variant="outlined" />
@@ -319,7 +391,23 @@ export default function JudgesPage() {
                 <EventSelect
                   events={events}
                   value={editing.eventIds}
-                  onChange={(eventIds) => setEditing({ ...editing, eventIds })}
+                  onChange={(eventIds) =>
+                    setEditing({
+                      ...editing,
+                      eventIds,
+                      headEventIds: editing.headEventIds.filter((id) =>
+                        eventIds.includes(id),
+                      ),
+                    })
+                  }
+                />
+                <HeadEventSelect
+                  events={events}
+                  assignedEventIds={editing.eventIds}
+                  value={editing.headEventIds}
+                  onChange={(headEventIds) =>
+                    setEditing({ ...editing, headEventIds })
+                  }
                 />
               </Stack>
             </DialogContent>

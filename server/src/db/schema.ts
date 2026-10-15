@@ -22,6 +22,24 @@ export const scoreSubmissionStatus = pgEnum('score_submission_status', [
   'locked',
 ])
 export const judgingScope = pgEnum('judging_scope', ['lead', 'follow', 'both'])
+export const divisionScoringMode = pgEnum('division_scoring_mode', [
+  'numeric',
+  'rounds',
+])
+export const roundType = pgEnum('round_type', [
+  'callback',
+  'relative_placement',
+])
+export const roundStatus = pgEnum('round_status', [
+  'pending',
+  'active',
+  'complete',
+])
+export const callbackVoteValue = pgEnum('callback_vote', [
+  'yes',
+  'alternate',
+  'no',
+])
 
 export const events = pgTable('events', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -50,6 +68,7 @@ export const judgeEventAssignments = pgTable(
     eventId: uuid('event_id')
       .notNull()
       .references(() => events.id, { onDelete: 'cascade' }),
+    isHeadJudge: boolean('is_head_judge').notNull().default(false),
     assignedAt: timestamp('assigned_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -101,6 +120,7 @@ export const divisions = pgTable('divisions', {
     .references(() => events.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   type: divisionType('type').notNull(),
+  scoringMode: divisionScoringMode('scoring_mode').notNull().default('numeric'),
   showCompetitorNames: boolean('show_competitor_names').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -187,5 +207,118 @@ export const scores = pgTable(
       name: 'scores_submission_fk',
     }).onDelete('cascade'),
     check('scores_range_check', sql`${table.score} between 1 and 10`),
+  ],
+)
+
+export const divisionRounds = pgTable(
+  'division_rounds',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    divisionId: uuid('division_id')
+      .notNull()
+      .references(() => divisions.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    type: roundType('type').notNull(),
+    position: integer('position').notNull(),
+    status: roundStatus('status').notNull().default('pending'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('division_rounds_division_position_unique').on(
+      table.divisionId,
+      table.position,
+    ),
+  ],
+)
+
+export const heats = pgTable('heats', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  roundId: uuid('round_id')
+    .notNull()
+    .references(() => divisionRounds.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+})
+
+export const heatEntries = pgTable(
+  'heat_entries',
+  {
+    heatId: uuid('heat_id')
+      .notNull()
+      .references(() => heats.id, { onDelete: 'cascade' }),
+    competitorId: uuid('competitor_id')
+      .notNull()
+      .references(() => competitors.id, { onDelete: 'cascade' }),
+  },
+  (table) => [primaryKey({ columns: [table.heatId, table.competitorId] })],
+)
+
+export const roundSubmissions = pgTable(
+  'round_submissions',
+  {
+    judgeId: uuid('judge_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    roundId: uuid('round_id')
+      .notNull()
+      .references(() => divisionRounds.id, { onDelete: 'cascade' }),
+    status: scoreSubmissionStatus('status').notNull().default('editing'),
+    scope: judgingScope('scope').notNull().default('both'),
+    revision: integer('revision').notNull().default(0),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.judgeId, table.roundId] })],
+)
+
+export const callbackVotes = pgTable(
+  'callback_votes',
+  {
+    judgeId: uuid('judge_id').notNull(),
+    roundId: uuid('round_id').notNull(),
+    competitorId: uuid('competitor_id')
+      .notNull()
+      .references(() => competitors.id, { onDelete: 'cascade' }),
+    vote: callbackVoteValue('vote').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.judgeId, table.roundId, table.competitorId],
+    }),
+    foreignKey({
+      columns: [table.judgeId, table.roundId],
+      foreignColumns: [roundSubmissions.judgeId, roundSubmissions.roundId],
+      name: 'callback_votes_submission_fk',
+    }).onDelete('cascade'),
+  ],
+)
+
+export const placements = pgTable(
+  'placements',
+  {
+    judgeId: uuid('judge_id').notNull(),
+    roundId: uuid('round_id').notNull(),
+    competitorId: uuid('competitor_id')
+      .notNull()
+      .references(() => competitors.id, { onDelete: 'cascade' }),
+    rank: integer('rank').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.judgeId, table.roundId, table.competitorId],
+    }),
+    foreignKey({
+      columns: [table.judgeId, table.roundId],
+      foreignColumns: [roundSubmissions.judgeId, roundSubmissions.roundId],
+      name: 'placements_submission_fk',
+    }).onDelete('cascade'),
+    check('placements_rank_check', sql`${table.rank} >= 1`),
   ],
 )

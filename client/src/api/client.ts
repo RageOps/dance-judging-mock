@@ -35,8 +35,103 @@ export type Division = {
   eventId: string
   name: string
   type: 'jack_and_jill' | 'strictly'
+  scoringMode: 'numeric' | 'rounds'
   showCompetitorNames: boolean
   registrationCount: number
+}
+
+export type RoundType = 'callback' | 'relative_placement'
+export type RoundStatus = 'pending' | 'active' | 'complete'
+export type CallbackVote = 'yes' | 'alternate' | 'no'
+
+export type HeatEntry = {
+  competitorId: string
+  bibNumber: number
+  firstName?: string
+  lastName?: string
+  role?: 'lead' | 'follow'
+  followCompetitorId?: string
+  followBibNumber?: number
+  followFirstName?: string
+  followLastName?: string
+}
+
+export type RoundHeat = {
+  id: string
+  position: number
+  entries: HeatEntry[]
+}
+
+export type DivisionRound = {
+  id: string
+  divisionId: string
+  name: string
+  type: RoundType
+  position: number
+  status: RoundStatus
+  createdAt: string
+  heats: RoundHeat[]
+  lockedSubmissions: number
+  totalSubmissions: number
+  myStatus?: 'not_started' | 'editing' | 'locked'
+  myRevision?: number
+}
+
+export type RoundSheetEntry = HeatEntry & {
+  mark: CallbackVote | number | null
+}
+
+export type RoundSheet = {
+  event: Event
+  division: Division
+  round: {
+    id: string
+    divisionId: string
+    name: string
+    type: RoundType
+    position: number
+    status: RoundStatus
+  }
+  status: 'editing' | 'locked'
+  scope: 'lead' | 'follow' | 'both'
+  revision: number
+  submittedAt: string | null
+  heats: Array<{ id: string; position: number; entries: RoundSheetEntry[] }>
+}
+
+export type CallbackResultRow = HeatEntry & {
+  yes: number
+  alternate: number
+  no: number
+  points: number
+}
+
+export type PlacementResultRow = HeatEntry & {
+  placement: number | null
+  cumulativeCounts: number[]
+}
+
+export type RoundResults = {
+  event: Event
+  division: Division
+  round: {
+    id: string
+    name: string
+    type: RoundType
+    position: number
+    status: RoundStatus
+  }
+  judges: {
+    submitted: DivisionJudgeStatus[]
+    pending: DivisionJudgeStatus[]
+  }
+  results: {
+    leads?: CallbackResultRow[]
+    follows?: CallbackResultRow[]
+    entries?: CallbackResultRow[]
+    placements?: PlacementResultRow[]
+    ballots?: Array<{ judgeId: string; ranks: Record<string, number> }>
+  }
 }
 
 export type Registration = {
@@ -64,7 +159,7 @@ export type Judge = {
   email: string
   firstName: string
   lastName: string
-  events: Array<{ id: string; name?: string }>
+  events: Array<{ id: string; name?: string; isHead?: boolean }>
 }
 
 export type Coordinator = {
@@ -108,6 +203,7 @@ export type DivisionJudgeStatus = {
   id: string
   firstName: string
   lastName: string
+  isHead?: boolean
   status: 'not_started' | 'editing' | 'locked'
   scope: 'lead' | 'follow' | 'both' | null
   submittedAt: string | null

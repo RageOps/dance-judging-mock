@@ -1,0 +1,1 @@
+ALTER TABLE "judge_event_assignments" ADD COLUMN "is_head_judge" boolean DEFAULT false NOT NULL;

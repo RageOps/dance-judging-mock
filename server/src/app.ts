@@ -5,12 +5,18 @@ import { alias } from 'drizzle-orm/pg-core'
 import Fastify from 'fastify'
 import { db } from './db/client.js'
 import {
+  callbackVotes,
   competitors,
   coordinatorEventAssignments,
   divisionPairs,
   divisionRegistrations,
+  divisionRounds,
   divisions,
   events,
+  heatEntries,
+  heats,
+  placements,
+  roundSubmissions,
   scores,
   scoreSubmissions,
 } from './db/schema.js'
@@ -24,6 +30,7 @@ import {
 import { authRoutes } from './routes/auth.js'
 import { coordinatorRoutes } from './routes/coordinators.js'
 import { judgeRoutes } from './routes/judges.js'
+import { roundRoutes } from './routes/rounds.js'
 import { scoreRoutes } from './routes/scores.js'
 
 const cookieName = 'judging_session'
@@ -48,6 +55,7 @@ export function buildApp() {
   app.register(judgeRoutes)
   app.register(coordinatorRoutes)
   app.register(scoreRoutes)
+  app.register(roundRoutes)
 
   app.get('/api/events', { preHandler: requireEventManager }, async (request, reply) => {
     if (request.user.role === 'admin') {
@@ -310,6 +318,7 @@ export function buildApp() {
           eventId: divisions.eventId,
           name: divisions.name,
           type: divisions.type,
+          scoringMode: divisions.scoringMode,
           showCompetitorNames: divisions.showCompetitorNames,
           createdAt: divisions.createdAt,
           registrationCount: count(divisionRegistrations.competitorId),
@@ -334,6 +343,10 @@ export function buildApp() {
       const name = nonEmptyString(body.name)
       const type =
         body.type === 'jack_and_jill' || body.type === 'strictly' ? body.type : null
+      const scoringMode =
+        body.scoringMode === 'numeric' || body.scoringMode === 'rounds'
+          ? body.scoringMode
+          : 'numeric'
       const showCompetitorNames =
         typeof body.showCompetitorNames === 'boolean'
           ? body.showCompetitorNames
@@ -347,6 +360,7 @@ export function buildApp() {
           eventId: request.params.eventId,
           name,
           type,
+          scoringMode,
           showCompetitorNames,
         })
         .returning()
@@ -363,6 +377,10 @@ export function buildApp() {
       const name = nonEmptyString(body.name)
       const type =
         body.type === 'jack_and_jill' || body.type === 'strictly' ? body.type : null
+      const scoringMode =
+        body.scoringMode === 'numeric' || body.scoringMode === 'rounds'
+          ? body.scoringMode
+          : undefined
       const showCompetitorNames =
         typeof body.showCompetitorNames === 'boolean'
           ? body.showCompetitorNames
@@ -372,7 +390,12 @@ export function buildApp() {
       }
       const [updated] = await db
         .update(divisions)
-        .set({ name, type, ...(showCompetitorNames === undefined ? {} : { showCompetitorNames }) })
+        .set({
+          name,
+          type,
+          ...(scoringMode === undefined ? {} : { scoringMode }),
+          ...(showCompetitorNames === undefined ? {} : { showCompetitorNames }),
+        })
         .where(
           and(
             eq(divisions.id, request.params.id),
@@ -480,7 +503,16 @@ export function buildApp() {
         .from(scoreSubmissions)
         .where(eq(scoreSubmissions.divisionId, request.params.divisionId))
         .limit(1)
-      if (startedSubmission) {
+      const [startedRound] = await db
+        .select({ id: divisionRounds.id })
+        .from(divisionRounds)
+        .innerJoin(
+          roundSubmissions,
+          eq(roundSubmissions.roundId, divisionRounds.id),
+        )
+        .where(eq(divisionRounds.divisionId, request.params.divisionId))
+        .limit(1)
+      if (startedSubmission || startedRound) {
         return reply.code(409).send({
           message: 'Division registrations cannot change after scoring has started',
         })
@@ -627,6 +659,46 @@ export function buildApp() {
               eq(scores.competitorId, request.params.competitorId),
             ),
           )
+        const divisionRoundIds = (
+          await tx
+            .select({ id: divisionRounds.id })
+            .from(divisionRounds)
+            .where(eq(divisionRounds.divisionId, request.params.divisionId))
+        ).map((round) => round.id)
+        if (divisionRoundIds.length) {
+          const divisionHeatIds = (
+            await tx
+              .select({ id: heats.id })
+              .from(heats)
+              .where(inArray(heats.roundId, divisionRoundIds))
+          ).map((heat) => heat.id)
+          if (divisionHeatIds.length) {
+            await tx
+              .delete(heatEntries)
+              .where(
+                and(
+                  eq(heatEntries.competitorId, request.params.competitorId),
+                  inArray(heatEntries.heatId, divisionHeatIds),
+                ),
+              )
+          }
+          await tx
+            .delete(callbackVotes)
+            .where(
+              and(
+                eq(callbackVotes.competitorId, request.params.competitorId),
+                inArray(callbackVotes.roundId, divisionRoundIds),
+              ),
+            )
+          await tx
+            .delete(placements)
+            .where(
+              and(
+                eq(placements.competitorId, request.params.competitorId),
+                inArray(placements.roundId, divisionRoundIds),
+              ),
+            )
+        }
         return deleted
       })
       if (!scratched) return reply.code(404).send({ message: 'Registration not found' })
@@ -726,7 +798,16 @@ export function buildApp() {
         .from(scoreSubmissions)
         .where(eq(scoreSubmissions.divisionId, request.params.divisionId))
         .limit(1)
-      if (startedSubmission) {
+      const [startedRound] = await db
+        .select({ id: divisionRounds.id })
+        .from(divisionRounds)
+        .innerJoin(
+          roundSubmissions,
+          eq(roundSubmissions.roundId, divisionRounds.id),
+        )
+        .where(eq(divisionRounds.divisionId, request.params.divisionId))
+        .limit(1)
+      if (startedSubmission || startedRound) {
         return reply.code(409).send({
           message: 'Division pairs cannot change after scoring has started',
         })

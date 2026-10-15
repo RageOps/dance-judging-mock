@@ -17,9 +17,11 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   api,
   type DivisionJudgeStatus,
+  type DivisionRound,
   type DivisionStatus,
   type PreliminaryPairResult,
   type PreliminaryResult,
+  type RoundResults,
 } from '../api/client'
 import { useAuth } from '../context/auth'
 
@@ -70,7 +72,14 @@ function JudgeList({
               }
             >
               <ListItemText
-                primary={`${judge.firstName} ${judge.lastName}`}
+                primary={
+                  <>
+                    {judge.firstName} {judge.lastName}
+                    {judge.isHead && (
+                      <Chip size="small" label="Head" sx={{ ml: 1 }} />
+                    )}
+                  </>
+                }
                 secondary={
                   judge.submittedAt
                     ? new Date(judge.submittedAt).toLocaleString()
@@ -167,6 +176,119 @@ function ResultsList({
   )
 }
 
+function RoundsStatusList({
+  eventId,
+  divisionId,
+}: {
+  eventId: string
+  divisionId: string
+}) {
+  const [rounds, setRounds] = useState<DivisionRound[]>([])
+  const [results, setResults] = useState<Record<string, RoundResults>>({})
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api<DivisionRound[]>(`/events/${eventId}/divisions/${divisionId}/rounds`)
+      .then(async (roundRows) => {
+        setRounds(roundRows)
+        const entries = await Promise.all(
+          roundRows.map(async (round) => [
+            round.id,
+            await api<RoundResults>(
+              `/events/${eventId}/divisions/${divisionId}/rounds/${round.id}/results`,
+            ),
+          ]),
+        )
+        setResults(Object.fromEntries(entries))
+      })
+      .catch((reason: unknown) => {
+        setError(
+          reason instanceof Error ? reason.message : 'Unable to load rounds',
+        )
+      })
+  }, [divisionId, eventId])
+
+  if (error) return <Alert severity="error">{error}</Alert>
+  if (!rounds.length) {
+    return <Alert severity="info">This division has no rounds yet.</Alert>
+  }
+
+  return (
+    <Stack spacing={2}>
+      {rounds.map((round) => {
+        const result = results[round.id]
+        const callbackRows = [
+          ...(result?.results.leads ?? []),
+          ...(result?.results.follows ?? []),
+          ...(result?.results.entries ?? []),
+        ]
+        const placementRows = result?.results.placements ?? []
+        return (
+          <Card key={round.id} variant="outlined">
+            <CardContent>
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 1,
+                  mb: 1,
+                }}
+              >
+                <Typography variant="h6">
+                  {round.position}. {round.name}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={`${round.status} · ${round.lockedSubmissions} ballots`}
+                />
+              </Box>
+              <Typography color="text.secondary" sx={{ mb: 1 }}>
+                {round.type === 'callback'
+                  ? 'Callback'
+                  : 'Relative placement'}
+              </Typography>
+              <List disablePadding dense>
+                {round.type === 'callback'
+                  ? callbackRows.map((row) => (
+                      <ListItem key={row.competitorId} disableGutters>
+                        <ListItemText
+                          primary={`#${row.bibNumber}${row.firstName ? ` ${row.firstName} ${row.lastName ?? ''}` : ''}`}
+                          secondary={`Yes ${row.yes} · Alt ${row.alternate} · No ${row.no}`}
+                        />
+                        <Typography
+                          sx={{ fontVariantNumeric: 'tabular-nums' }}
+                        >
+                          {row.points}
+                        </Typography>
+                      </ListItem>
+                    ))
+                  : placementRows.map((row) => (
+                      <ListItem key={row.competitorId} disableGutters>
+                        <ListItemText
+                          primary={`#${row.bibNumber}${row.firstName ? ` ${row.firstName} ${row.lastName ?? ''}` : ''}`}
+                        />
+                        <Typography
+                          sx={{ fontVariantNumeric: 'tabular-nums' }}
+                        >
+                          {row.placement ?? '—'}
+                        </Typography>
+                      </ListItem>
+                    ))}
+              </List>
+              {!callbackRows.length && !placementRows.length && (
+                <Typography color="text.secondary">
+                  No locked ballots yet.
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })}
+    </Stack>
+  )
+}
+
 export default function DivisionStatusPage() {
   const { eventId = '', divisionId = '' } = useParams()
   const { user } = useAuth()
@@ -224,73 +346,82 @@ export default function DivisionStatusPage() {
             </Typography>
           </Box>
 
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: 2,
-            }}
-          >
-            <Card variant="outlined">
-              <CardContent>
-                <Typography color="text.secondary">Submitted</Typography>
-                <Typography variant="h4">{submittedCount}</Typography>
-              </CardContent>
-            </Card>
-            <Card variant="outlined">
-              <CardContent>
-                <Typography color="text.secondary">Pending</Typography>
-                <Typography variant="h4">{pendingCount}</Typography>
-              </CardContent>
-            </Card>
-          </Box>
-
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-              gap: 2,
-            }}
-          >
-            <JudgeList
-              title="Submitted"
-              judges={status.judges.submitted}
-              submitted
-              strictly={isStrictly}
+          {status.division.scoringMode === 'rounds' ? (
+            <RoundsStatusList
+              eventId={eventId}
+              divisionId={divisionId}
             />
-            <JudgeList
-              title="Pending"
-              judges={status.judges.pending}
-              submitted={false}
-              strictly={isStrictly}
-            />
-          </Box>
-
-          <Box>
-            <Typography variant="h6">Provisional results</Typography>
-            <Alert severity="info" sx={{ mt: 1 }}>
-              Preliminary — scoring rules not finalized.
-            </Alert>
-          </Box>
-          {isStrictly ? (
-            <PairResultsList results={status.preliminaryResults.pairs} />
           ) : (
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-                gap: 2,
-              }}
-            >
-              <ResultsList
-                title="Leads"
-                results={status.preliminaryResults.leads}
-              />
-              <ResultsList
-                title="Follows"
-                results={status.preliminaryResults.follows}
-              />
-            </Box>
+            <>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: 2,
+                }}
+              >
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography color="text.secondary">Submitted</Typography>
+                    <Typography variant="h4">{submittedCount}</Typography>
+                  </CardContent>
+                </Card>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography color="text.secondary">Pending</Typography>
+                    <Typography variant="h4">{pendingCount}</Typography>
+                  </CardContent>
+                </Card>
+              </Box>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                  gap: 2,
+                }}
+              >
+                <JudgeList
+                  title="Submitted"
+                  judges={status.judges.submitted}
+                  submitted
+                  strictly={isStrictly}
+                />
+                <JudgeList
+                  title="Pending"
+                  judges={status.judges.pending}
+                  submitted={false}
+                  strictly={isStrictly}
+                />
+              </Box>
+
+              <Box>
+                <Typography variant="h6">Provisional results</Typography>
+                <Alert severity="info" sx={{ mt: 1 }}>
+                  Preliminary — scoring rules not finalized.
+                </Alert>
+              </Box>
+              {isStrictly ? (
+                <PairResultsList results={status.preliminaryResults.pairs} />
+              ) : (
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                    gap: 2,
+                  }}
+                >
+                  <ResultsList
+                    title="Leads"
+                    results={status.preliminaryResults.leads}
+                  />
+                  <ResultsList
+                    title="Follows"
+                    results={status.preliminaryResults.follows}
+                  />
+                </Box>
+              )}
+            </>
           )}
         </Stack>
       )}

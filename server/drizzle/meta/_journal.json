@@ -57,6 +57,20 @@
       "when": 1792042496840,
       "tag": "0007_competitor-check-in",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792043099121,
+      "tag": "0008_rounds",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792044330973,
+      "tag": "0009_head-judge",
+      "breakpoints": true
     }
   ]
 }
