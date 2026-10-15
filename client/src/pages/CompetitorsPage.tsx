@@ -30,6 +30,8 @@ export default function CompetitorsPage() {
   const [editing, setEditing] = useState<Competitor | null>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -39,6 +41,7 @@ export default function CompetitorsPage() {
       ])
       setEvent(eventResult)
       setCompetitors(competitorResult)
+      setLoaded(true)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to load competitors')
     }
@@ -58,6 +61,7 @@ export default function CompetitorsPage() {
       })
       setCompetitors((current) => [...current, created])
       setForm(emptyForm)
+      setDialogOpen(false)
       setSuccess(`Created bib #${created.bibNumber}`)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to add competitor')
@@ -99,6 +103,23 @@ export default function CompetitorsPage() {
     }
   }
 
+  const competitorFormFields = (
+    <>
+      <TextField
+        label="First name"
+        value={form.firstName}
+        onChange={(event) => setForm({ ...form, firstName: event.target.value })}
+        required
+      />
+      <TextField
+        label="Last name"
+        value={form.lastName}
+        onChange={(event) => setForm({ ...form, lastName: event.target.value })}
+        required
+      />
+    </>
+  )
+
   return (
     <>
       <Button onClick={() => navigate('/events')} sx={{ mb: 1 }}>
@@ -106,40 +127,44 @@ export default function CompetitorsPage() {
       </Button>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" component="h1">{event?.name ?? 'Event'} competitors</Typography>
-        <Button
-          variant="outlined"
-          onClick={() => navigate(`/events/${eventId}/competitors/check-in`)}
-        >
-          Competitor check-in
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {competitors.length > 0 && (
+            <Button variant="contained" onClick={() => setDialogOpen(true)}>
+              Add competitor
+            </Button>
+          )}
+          <Button
+            variant="outlined"
+            onClick={() => navigate(`/events/${eventId}/competitors/check-in`)}
+          >
+            Competitor check-in
+          </Button>
+        </Box>
       </Box>
       <Typography color="text.secondary" sx={{ mb: 3 }}>
         Bib numbers are provisional until assigned at competitor check-in.
       </Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-      <Stack component="form" onSubmit={addCompetitor} spacing={2} sx={{ mb: 4 }}>
-        <TextField
-          label="First name"
-          value={form.firstName}
-          onChange={(event) => setForm({ ...form, firstName: event.target.value })}
-          required
-        />
-        <TextField
-          label="Last name"
-          value={form.lastName}
-          onChange={(event) => setForm({ ...form, lastName: event.target.value })}
-          required
-        />
-        <Button type="submit" variant="contained" size="large">Add competitor</Button>
-      </Stack>
+      {loaded && !competitors.length && (
+        <Card variant="outlined" sx={{ mb: 3 }}>
+          <CardContent>
+            <Stack component="form" onSubmit={addCompetitor} spacing={2}>
+              {competitorFormFields}
+              <Button type="submit" variant="contained" size="large">
+                Add competitor
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
 
       <Stack spacing={2}>
         {competitors.map((competitor) => (
           <Card key={competitor.id} variant="outlined">
             <CardContent>
               <Typography variant="h6">
-                #{competitor.bibNumber} — {competitor.firstName}
+                #{competitor.bibNumber} — {competitor.firstName} {competitor.lastName}
               </Typography>
             </CardContent>
             <CardActions>
@@ -177,6 +202,27 @@ export default function CompetitorsPage() {
             </DialogActions>
           </form>
         )}
+      </Dialog>
+
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        fullWidth
+      >
+        <form onSubmit={addCompetitor}>
+          <DialogTitle>Add competitor</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              {competitorFormFields}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="contained">
+              Add competitor
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
 
       <Snackbar

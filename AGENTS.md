@@ -2,6 +2,8 @@
 
 ## Conventions
 
+- After finishing edits, always run `docker compose up --build -d` so changes
+  are picked up in the local dev environment.
 - Back navigation: any page that sits deeper than its section root renders a
   `Back to <parent>` `Button` above the page title (`sx={{ mb: 1 }}`),
   navigating to the explicit parent route — not `navigate(-1)`. Pages shared

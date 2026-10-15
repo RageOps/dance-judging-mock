@@ -359,6 +359,28 @@ export default function DivisionsPage() {
     }
   }
 
+  async function deleteDivision(division: Division) {
+    if (
+      !window.confirm(
+        `Delete division "${division.name}" and all its registrations, scores, and rounds?`,
+      )
+    )
+      return
+    setError('')
+    try {
+      await api(`/events/${eventId}/divisions/${division.id}`, {
+        method: 'DELETE',
+      })
+      setDivisions((current) =>
+        current.filter((item) => item.id !== division.id),
+      )
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : 'Unable to delete division',
+      )
+    }
+  }
+
   async function updateNameVisibility(
     division: Division,
     showNames: boolean,
@@ -574,6 +596,13 @@ export default function DivisionsPage() {
                 }
               >
                 Division status
+              </Button>
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={() => void deleteDivision(division)}
+              >
+                Delete
               </Button>
             </Box>
             <DivisionAssignments
