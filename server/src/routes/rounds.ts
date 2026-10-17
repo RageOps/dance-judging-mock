@@ -226,7 +226,9 @@ export async function roundRoutes(app: FastifyInstance) {
           ? body.type
           : null
       const advanceCount =
-        body.advanceCount === undefined || body.advanceCount === null
+        body.advanceCount === undefined ||
+        body.advanceCount === null ||
+        body.advanceCount === 0
           ? null
           : typeof body.advanceCount === 'number' &&
               Number.isInteger(body.advanceCount) &&
@@ -288,12 +290,13 @@ export async function roundRoutes(app: FastifyInstance) {
         body.advanceCount === undefined
           ? undefined
           : body.advanceCount === null ||
+              body.advanceCount === 0 ||
               (typeof body.advanceCount === 'number' &&
                 Number.isInteger(body.advanceCount) &&
                 body.advanceCount >= 1)
-            ? body.advanceCount
-            : null
-      if (name === null || status === null || advanceCount === null) {
+            ? body.advanceCount || null
+            : -1
+      if (name === null || status === null || advanceCount === -1) {
         return reply.code(400).send({ message: 'Invalid round update' })
       }
       const [updated] = await db

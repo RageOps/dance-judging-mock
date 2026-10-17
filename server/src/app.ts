@@ -649,7 +649,9 @@ export function buildApp() {
           ? body.showCompetitorNames
           : true
       const advanceCount =
-        body.advanceCount === undefined || body.advanceCount === null
+        body.advanceCount === undefined ||
+        body.advanceCount === null ||
+        body.advanceCount === 0
           ? null
           : typeof body.advanceCount === 'number' &&
               Number.isInteger(body.advanceCount) &&
@@ -698,7 +700,7 @@ export function buildApp() {
       const advanceCount =
         body.advanceCount === undefined
           ? undefined
-          : body.advanceCount === null
+          : body.advanceCount === null || body.advanceCount === 0
             ? null
             : typeof body.advanceCount === 'number' &&
                 Number.isInteger(body.advanceCount) &&
@@ -1176,17 +1178,6 @@ export function buildApp() {
 
       const leads = registrations.filter((row) => row.role === 'lead')
       const follows = registrations.filter((row) => row.role === 'follow')
-      if (leads.length !== follows.length) {
-        return reply
-          .code(400)
-          .send({ message: 'Strictly divisions need equal lead and follow counts before pairing' })
-      }
-      if (validPairs.length !== leads.length) {
-        return reply
-          .code(400)
-          .send({ message: 'Every lead must be paired with exactly one follow' })
-      }
-
       const leadIds = new Set(leads.map((row) => row.competitorId))
       const followIds = new Set(follows.map((row) => row.competitorId))
       const usedLeads = new Set<string>()
@@ -1203,11 +1194,6 @@ export function buildApp() {
         }
         usedLeads.add(pair.leadCompetitorId)
         usedFollows.add(pair.followCompetitorId)
-      }
-      if (usedLeads.size !== leads.length || usedFollows.size !== follows.length) {
-        return reply
-          .code(400)
-          .send({ message: 'Every lead and follow must appear in exactly one pair' })
       }
 
       await db.transaction(async (tx) => {

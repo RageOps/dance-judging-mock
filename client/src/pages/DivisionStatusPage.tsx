@@ -344,6 +344,9 @@ export default function DivisionStatusPage() {
   const navigate = useNavigate()
   const [status, setStatus] = useState<DivisionStatus | null>(null)
   const [error, setError] = useState('')
+  const [rounds, setRounds] = useState<DivisionRound[]>([])
+  const [finalsBusy, setFinalsBusy] = useState(false)
+  const [finalsError, setFinalsError] = useState('')
 
   useEffect(() => {
     api<DivisionStatus>(
@@ -355,7 +358,28 @@ export default function DivisionStatusPage() {
           reason instanceof Error ? reason.message : 'Unable to load status',
         )
       })
+    api<DivisionRound[]>(`/events/${eventId}/divisions/${divisionId}/rounds`)
+      .then(setRounds)
+      .catch(() => setRounds([]))
   }, [divisionId, eventId])
+
+  async function createFinals() {
+    setFinalsBusy(true)
+    setFinalsError('')
+    try {
+      await api(`/events/${eventId}/divisions/${divisionId}/finals`, {
+        method: 'POST',
+      })
+      navigate(`/events/${eventId}/divisions/${divisionId}/rounds`)
+    } catch (reason) {
+      setFinalsError(
+        reason instanceof Error
+          ? reason.message
+          : 'Unable to create finals round',
+      )
+      setFinalsBusy(false)
+    }
+  }
 
   if (!status && !error) {
     return (
@@ -378,6 +402,9 @@ export default function DivisionStatusPage() {
     label: judgeLabel(judge),
     isHead: judge.isHead,
   }))
+  const finalsRound = rounds.find(
+    (round) => round.type === 'relative_placement',
+  )
 
   return (
     <>
@@ -405,12 +432,13 @@ export default function DivisionStatusPage() {
             </Typography>
           </Box>
 
-          {status.division.scoringMode === 'rounds' ? (
+          {status.division.scoringMode === 'rounds' || rounds.length > 0 ? (
             <RoundsStatusList
               eventId={eventId}
               divisionId={divisionId}
             />
-          ) : (
+          ) : null}
+          {status.division.scoringMode !== 'rounds' && (
             <>
               <Box
                 sx={{
@@ -462,6 +490,46 @@ export default function DivisionStatusPage() {
                     ? ` Each judge's top ${advanceCount} scores count as a "yes"; the ${advanceCount} entries with the most yeses in each group are marked as advancing.`
                     : ''}
                 </Alert>
+                {showAdvancing && (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      gap: 1,
+                      mt: 1,
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                    }}
+                  >
+                    {!finalsRound && user?.role !== 'judge' && (
+                      <Button
+                        variant="contained"
+                        disabled={finalsBusy}
+                        onClick={() => void createFinals()}
+                      >
+                        {finalsBusy
+                          ? 'Creating…'
+                          : `Create finals round (top ${advanceCount} per group)`}
+                      </Button>
+                    )}
+                    {finalsRound && (
+                      <Button
+                        variant="outlined"
+                        onClick={() =>
+                          navigate(
+                            user?.role === 'judge'
+                              ? `/judge/events/${eventId}/divisions/${divisionId}/rounds`
+                              : `/events/${eventId}/divisions/${divisionId}/rounds`,
+                          )
+                        }
+                      >
+                        {finalsRound.name}
+                      </Button>
+                    )}
+                    {finalsError && (
+                      <Alert severity="error">{finalsError}</Alert>
+                    )}
+                  </Box>
+                )}
               </Box>
               {isStrictly ? (
                 <NumericResultsTable

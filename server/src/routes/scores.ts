@@ -6,8 +6,11 @@ import {
   competitors,
   divisionPairs,
   divisionRegistrations,
+  divisionRounds,
   divisions,
   events,
+  heatEntries,
+  heats,
   judgeEventAssignments,
   scores,
   scoreSubmissions,
@@ -16,6 +19,7 @@ import {
 import {
   requireAuth,
   requireEventAccess,
+  requireEventManagerAccess,
 } from '../middleware/auth.js'
 import { computeRelativePlacement } from '../relativePlacement.js'
 
@@ -604,6 +608,87 @@ export async function scoreRoutes(app: FastifyInstance) {
         revision: result,
         submittedAt: now,
       }
+    },
+  )
+
+  // Creates a "Finals" relative-placement round seeded with the competitors
+  // currently flagged as advancing on a numeric division. Event managers only.
+  app.post<{ Params: { eventId: string; divisionId: string } }>(
+    '/api/events/:eventId/divisions/:divisionId/finals',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
+      const division = await validateDivision(
+        request.params.eventId,
+        request.params.divisionId,
+      )
+      if (!division) return reply.code(404).send({ message: 'Division not found' })
+      if (!division.advanceCount || division.advanceCount < 1) {
+        return reply
+          .code(400)
+          .send({ message: 'Set an advance count on the division first' })
+      }
+      const [existingFinals] = await db
+        .select({ id: divisionRounds.id })
+        .from(divisionRounds)
+        .where(
+          and(
+            eq(divisionRounds.divisionId, division.id),
+            eq(divisionRounds.type, 'relative_placement'),
+          ),
+        )
+        .limit(1)
+      if (existingFinals) {
+        return reply
+          .code(409)
+          .send({ message: 'A finals round already exists for this division' })
+      }
+      const advancement = await advancementGroups(
+        request.params.eventId,
+        division,
+      )
+      const advancingIds = (advancement?.groups ?? []).flatMap((group) =>
+        group.results
+          .filter((row) => row.advancing)
+          .map((row) => row.competitorId),
+      )
+      if (!advancingIds.length) {
+        return reply.code(409).send({
+          message: 'No advancing competitors yet — waiting on locked ballots',
+        })
+      }
+      const positions = await db
+        .select({ position: divisionRounds.position })
+        .from(divisionRounds)
+        .where(eq(divisionRounds.divisionId, division.id))
+      const position = positions.length
+        ? Math.max(...positions.map((row) => row.position)) + 1
+        : 1
+      const created = await db.transaction(async (tx) => {
+        const [round] = await tx
+          .insert(divisionRounds)
+          .values({
+            divisionId: division.id,
+            name: 'Finals',
+            type: 'relative_placement',
+            position,
+          })
+          .returning()
+        if (!round) throw new Error('Failed to create finals round')
+        const [heat] = await tx
+          .insert(heats)
+          .values({ roundId: round.id, position: 1 })
+          .returning()
+        if (!heat) throw new Error('Failed to create finals heat')
+        await tx.insert(heatEntries).values(
+          advancingIds.map((competitorId) => ({
+            heatId: heat.id,
+            competitorId,
+          })),
+        )
+        return round
+      })
+      return reply.code(201).send(created)
     },
   )
 

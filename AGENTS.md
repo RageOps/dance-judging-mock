@@ -163,6 +163,16 @@
   advancing flags); `ScoringPage` shows a read-only "Advancing" chip list
   once the ballot is locked. `DivisionStatusPage` shows a "Yes" count column
   plus the "Adv" chip.
+- `POST /api/events/:e/divisions/:d/finals` (event-manager) creates a
+  "Finals" `relative_placement` round seeded with a single heat of all
+  `advancing` ids (leads+follows for J&J; pair leads for Strictly) — the
+  button lives on `DivisionStatusPage` next to Provisional results once
+  `advanceCount` is set; 409 if an RP round already exists. Finals scores/
+  results reuse the existing rounds UI (`RoundsPage`, `JudgeRoundsPage`,
+  `RoundScoringPage`); `DivisionStatusPage` shows `RoundsStatusList` whenever
+  rounds exist regardless of `scoringMode`.
+- `advanceCount` accepts `0` or `null` to clear the cutoff (division and
+  round POST/PATCH; the division form's empty/0 clears).
 - `0015_score-votes.sql` + `0016_drop-score-votes.sql`: an earlier
   YES/ALT/NO-vote implementation was added then reverted; keep both
   migrations so deployed DBs converge.
@@ -181,6 +191,10 @@
   competitors from certain divisions if they are not present for them."
 - Scratching a Strictly competitor also removes their pair, leaving their
   partner unpaired (partner must be re-paired or scratched separately).
+- Strictly pairing supports partial assignments: `PUT .../pairs` only needs
+  the subset of leads with a chosen follow (per-pair validity is still
+  enforced — registered roles, no duplicate leads/follows). Unpaired leads
+  are simply absent from judge sheets until paired.
 - Judges' score sheets are driven by current registrations, so scratched
   competitors simply disappear; their score rows are deleted to keep
   preliminary results clean.

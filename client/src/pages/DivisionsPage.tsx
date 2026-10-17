@@ -62,7 +62,7 @@ function parseAdvanceCount(value: string) {
   const trimmed = value.trim()
   if (!trimmed) return null
   const parsed = Number(trimmed)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed || null : undefined
 }
 
 function divisionFormFields(
@@ -198,10 +198,12 @@ function DivisionPairings({
       await api<void>(`/events/${eventId}/divisions/${division.id}/pairs`, {
         method: 'PUT',
         body: JSON.stringify({
-          pairs: leads.map((lead) => ({
-            leadCompetitorId: lead.competitorId,
-            followCompetitorId: pairs[lead.competitorId],
-          })),
+          pairs: leads
+            .filter((lead) => pairs[lead.competitorId])
+            .map((lead) => ({
+              leadCompetitorId: lead.competitorId,
+              followCompetitorId: pairs[lead.competitorId],
+            })),
         }),
       })
     } catch (reason) {
@@ -217,12 +219,14 @@ function DivisionPairings({
         Lead/follow pairs
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Judges score each pair once using the lead&apos;s bib number.
+        Judges score each pair once using the lead&apos;s bib number. Leads
+        left unpaired are saved as unpaired and won&apos;t appear on judges&apos;
+        sheets until paired.
       </Typography>
       {leads.length !== follows.length && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Strictly divisions need equal lead and follow counts before pairing (
-          {leads.length} leads, {follows.length} follows).
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {leads.length} leads, {follows.length} follows — you can save partial
+          pairings and fill in the rest later.
         </Alert>
       )}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -248,6 +252,9 @@ function DivisionPairings({
                 }))
               }
             >
+              <MenuItem value="">
+                <em>Unpaired</em>
+              </MenuItem>
               {follows.map((follow) => (
                 <MenuItem key={follow.competitorId} value={follow.competitorId}>
                   #{follow.bibNumber} {follow.firstName}
@@ -263,7 +270,6 @@ function DivisionPairings({
           fullWidth
           size="large"
           onClick={() => void savePairs()}
-          disabled={leads.length !== follows.length}
           sx={{ mt: 2, py: 1.5 }}
         >
           Save pairs
