@@ -1,0 +1,1 @@
+ALTER TABLE "division_rounds" ADD COLUMN "advance_count" integer;

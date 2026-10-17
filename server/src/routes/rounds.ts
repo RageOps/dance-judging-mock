@@ -225,7 +225,15 @@ export async function roundRoutes(app: FastifyInstance) {
         body.type === 'callback' || body.type === 'relative_placement'
           ? body.type
           : null
-      if (!name || !type) {
+      const advanceCount =
+        body.advanceCount === undefined || body.advanceCount === null
+          ? null
+          : typeof body.advanceCount === 'number' &&
+              Number.isInteger(body.advanceCount) &&
+              body.advanceCount >= 1
+            ? body.advanceCount
+            : undefined
+      if (!name || !type || advanceCount === undefined) {
         return reply
           .code(400)
           .send({ message: 'A round name and valid type are required' })
@@ -244,6 +252,7 @@ export async function roundRoutes(app: FastifyInstance) {
           divisionId: request.params.divisionId,
           name,
           type,
+          advanceCount,
           position,
         })
         .returning()
@@ -275,7 +284,16 @@ export async function roundRoutes(app: FastifyInstance) {
               body.status === 'complete'
             ? body.status
             : null
-      if (name === null || status === null) {
+      const advanceCount =
+        body.advanceCount === undefined
+          ? undefined
+          : body.advanceCount === null ||
+              (typeof body.advanceCount === 'number' &&
+                Number.isInteger(body.advanceCount) &&
+                body.advanceCount >= 1)
+            ? body.advanceCount
+            : null
+      if (name === null || status === null || advanceCount === null) {
         return reply.code(400).send({ message: 'Invalid round update' })
       }
       const [updated] = await db
@@ -283,6 +301,7 @@ export async function roundRoutes(app: FastifyInstance) {
         .set({
           ...(name === undefined ? {} : { name }),
           ...(status === undefined ? {} : { status }),
+          ...(advanceCount === undefined ? {} : { advanceCount }),
         })
         .where(eq(divisionRounds.id, request.params.roundId))
         .returning()
@@ -606,14 +625,33 @@ export async function roundRoutes(app: FastifyInstance) {
             ? -1
             : { yes: 2, alternate: 1, no: 0 }[vote]
         }
-        const sortRows = (rows: typeof results) =>
-          [...rows].sort(
+        const advanceCount =
+          round.advanceCount && round.advanceCount >= 1
+            ? round.advanceCount
+            : null
+        // Tally pools every entry in the round regardless of heat. Advancing
+        // entries are the top N per group ranked by yes count; entries tied on
+        // yeses are broken by aggregate points, then head-judge vote, then bib.
+        const sortRows = (rows: typeof results) => {
+          const sorted = [...rows].sort(
             (a, b) =>
-              b.points - a.points ||
               b.yes - a.yes ||
+              b.points - a.points ||
               headVoteRank(b.competitorId) - headVoteRank(a.competitorId) ||
               a.bibNumber - b.bibNumber,
           )
+          const advancing = new Set(
+            advanceCount
+              ? sorted
+                  .slice(0, Math.min(advanceCount, sorted.length))
+                  .map((row) => row.competitorId)
+              : [],
+          )
+          return sorted.map((row) => ({
+            ...row,
+            advancing: advancing.has(row.competitorId),
+          }))
+        }
         return {
           ...base,
           results: {

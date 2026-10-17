@@ -72,6 +72,7 @@ export type DivisionRound = {
   divisionId: string
   name: string
   type: RoundType
+  advanceCount: number | null
   position: number
   status: RoundStatus
   createdAt: string
@@ -110,6 +111,7 @@ export type CallbackResultRow = HeatEntry & {
   alternate: number
   no: number
   points: number
+  advancing?: boolean
 }
 
 export type PlacementResultRow = HeatEntry & {

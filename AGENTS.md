@@ -98,6 +98,14 @@
 - Advancement is coordinator-driven: `RoundsPage` results show sorted tallies
   with checkboxes, "Select top N", and "Advance to next round" which writes the
   next round's heats (round-robin across its heats; single heat for finals).
+- `division_rounds.advance_count` (integer, nullable; callback rounds only):
+  the tally flags `advancing` on exactly the top N rows per results group
+  (leads/follows/entries), pooled across all heats. Group order: yes count,
+  then aggregate points when yeses are tied, then head-judge vote, then bib.
+  Set on the create-round form; `PATCH` also accepts `advanceCount`.
+  `RoundsPage` results show an "Adv" chip on flagged rows and pre-check them
+  in the advance selection (coordinator can still adjust). Migration:
+  `server/drizzle/0017_round-advance-count.sql`.
 - J&J finals are judged as pairs: `heat_entries.follow_competitor_id`
   (nullable) stores the follow for a `relative_placement` entry. Entries are
   always keyed by the lead's competitor id/bib; the follow's bib is displayed
@@ -146,10 +154,11 @@
 - When `advance_count` is set on a numeric division, judges still score 1–10
   on sliders; each locked ballot counts as a "yes" for that judge's own top-N
   scores in each group (leads/follows/strictly pairs; ties at the judge's
-  cutoff all count). Entries whose yes-count reaches the group's Nth highest
-  count are `advancing` (computed by `advancementYesCounts` in scores.ts over
-  assigned judges' locked ballots). `points` on result rows = yes count;
-  rows sort by points then average.
+  cutoff all count). Exactly the group's top N by yes count are `advancing` —
+  ties on yeses are broken by each entry's aggregate score across ballots
+  (computed by `advancementYesCounts` in scores.ts over assigned judges'
+  locked ballots). `points` on result rows = yes count; rows sort by points
+  then average.
 - The judge sheet GET returns an `advancement` block (per-group points +
   advancing flags); `ScoringPage` shows a read-only "Advancing" chip list
   once the ballot is locked. `DivisionStatusPage` shows a "Yes" count column

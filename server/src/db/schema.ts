@@ -224,6 +224,7 @@ export const divisionRounds = pgTable(
       .references(() => divisions.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     type: roundType('type').notNull(),
+    advanceCount: integer('advance_count'),
     position: integer('position').notNull(),
     status: roundStatus('status').notNull().default('pending'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

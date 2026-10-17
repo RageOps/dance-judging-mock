@@ -366,7 +366,15 @@ function CallbackResults({
     { title: 'Follows', rows: results.results.follows ?? [] },
     { title: 'Entries', rows: results.results.entries ?? [] },
   ].filter((group) => group.rows.length)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(
+    () =>
+      new Set(
+        groups
+          .flatMap((group) => group.rows)
+          .filter((row) => row.advancing)
+          .map((row) => row.competitorId),
+      ),
+  )
   const [topN, setTopN] = useState('')
   const [error, setError] = useState('')
   const voteBallots = new Map(
@@ -452,6 +460,9 @@ function CallbackResults({
           primary={entryLabel(row)}
           secondary={`Yes ${row.yes} · Alt ${row.alternate} · No ${row.no}`}
         />
+        {row.advancing && (
+          <Chip size="small" color="success" label="Adv" sx={{ mr: 1 }} />
+        )}
         <Typography variant="h6" sx={{ fontVariantNumeric: 'tabular-nums' }}>
           {row.points}
         </Typography>
@@ -710,6 +721,7 @@ export default function RoundsPage() {
   const [pool, setPool] = useState<PoolEntry[]>([])
   const [name, setName] = useState('')
   const [roundType, setRoundType] = useState<RoundType>('callback')
+  const [advanceCount, setAdvanceCount] = useState('')
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -766,9 +778,17 @@ export default function RoundsPage() {
     try {
       await api(`/events/${eventId}/divisions/${divisionId}/rounds`, {
         method: 'POST',
-        body: JSON.stringify({ name, type: roundType }),
+        body: JSON.stringify({
+          name,
+          type: roundType,
+          advanceCount:
+            roundType === 'callback' && advanceCount
+              ? Number(advanceCount)
+              : null,
+        }),
       })
       setName('')
+      setAdvanceCount('')
       setDialogOpen(false)
       await load()
     } catch (reason) {
@@ -810,6 +830,16 @@ export default function RoundsPage() {
           </MenuItem>
         </Select>
       </FormControl>
+      {roundType === 'callback' && (
+        <TextField
+          label="Advance to next round (top N, optional)"
+          type="number"
+          value={advanceCount}
+          slotProps={{ htmlInput: { min: 1 } }}
+          helperText="Top N tallied per group across all heats are marked advancing."
+          onChange={(event) => setAdvanceCount(event.target.value)}
+        />
+      )}
     </>
   )
 

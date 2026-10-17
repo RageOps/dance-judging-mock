@@ -73,18 +73,26 @@ async function lockedScoreBallots(eventId: string, divisionId: string) {
 }
 
 // Each judge's ballot counts as a "yes" for their own top-N scores in the
-// group (ties at the judge's cutoff all count). Advancing entries are those
-// with yes-counts at or above the group's Nth highest count.
+// group (ties at the judge's cutoff all count). Advancing entries are the
+// group's top N ranked by yes count; ties on yeses are broken by each entry's
+// aggregate score across ballots, then by competitor order.
 function advancementYesCounts(
   competitorIds: string[],
   ballots: Map<string, Map<string, number>>,
   advanceCount: number,
 ) {
   const yes = new Map(competitorIds.map((id) => [id, 0]))
+  const scoreTotal = new Map(competitorIds.map((id) => [id, 0]))
   for (const ballot of ballots.values()) {
     const scored = competitorIds
       .map((id) => ballot.get(id))
       .filter((score): score is number => score !== undefined)
+    for (const id of competitorIds) {
+      const score = ballot.get(id)
+      if (score !== undefined) {
+        scoreTotal.set(id, scoreTotal.get(id)! + score)
+      }
+    }
     if (!scored.length) continue
     const cutoff = scored.sort((a, b) => b - a)[
       Math.min(advanceCount, scored.length) - 1
@@ -96,12 +104,15 @@ function advancementYesCounts(
       }
     }
   }
-  const sortedYes = [...yes.values()].sort((a, b) => b - a)
-  const cutoffYes = sortedYes[Math.min(advanceCount, sortedYes.length) - 1]
   const advancing = new Set(
-    [...yes]
-      .filter(([, count]) => cutoffYes !== undefined && count >= cutoffYes)
-      .map(([id]) => id),
+    competitorIds
+      .sort(
+        (a, b) =>
+          yes.get(b)! - yes.get(a)! ||
+          scoreTotal.get(b)! - scoreTotal.get(a)! ||
+          a.localeCompare(b),
+      )
+      .slice(0, Math.min(advanceCount, competitorIds.length)),
   )
   return { points: yes, advancing }
 }

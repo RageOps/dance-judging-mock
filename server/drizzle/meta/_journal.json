@@ -120,6 +120,13 @@
       "when": 1792250600567,
       "tag": "0016_drop-score-votes",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792252373911,
+      "tag": "0017_round-advance-count",
+      "breakpoints": true
     }
   ]
 }
