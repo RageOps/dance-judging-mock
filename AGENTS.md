@@ -135,11 +135,38 @@
 
 - `divisions.advance_count` (integer, nullable): the N highest-scoring entries
   per results group (leads / follows / strictly pairs) are flagged `advancing`
-  in the division status response. Ties at the cutoff average all advance.
+  in the division status response. Ties at the cutoff aggregate all advance.
   Migration: `server/drizzle/0014_advance-count.sql`.
 - Set at division creation or via the Edit dialog on `DivisionsPage`
   (`PATCH` accepts `advanceCount`, `null` clears). Shown as a "Top N advance"
   chip and an "Adv" column on `DivisionStatusPage`.
+
+## Advancement voting (YES/ALT/NO) (added 2026-10-17)
+
+- When `advance_count` is set on a numeric division, judges vote instead of
+  scoring 1–10: each entry gets `yes`/`alternate`/`no` (equal weight per
+  judge; yes=1, alt=0.5 points). Aggregate points across locked ballots → top
+  N per group (leads/follows/strictly pairs) advance.
+- `score_votes` (judge × division × competitor → `vote` callback_vote +
+  `alt_rank` int nullable 1–2), FK'd to `score_submissions` like `scores`.
+  Migration: `server/drizzle/0015_score-votes.sql`. Scratching a competitor
+  deletes their vote rows.
+- `PUT /api/judge/events/:e/divisions/:d/scores` accepts `votes` (instead of
+  `scores`) when `advanceCount` is set — same lock/revision pattern; resubmit
+  clears `alt_rank`. The sheet GET returns `mark`/`altRank` per entry plus an
+  `advancement` block (per-group points tallies + advancing flags, computed
+  only over assigned judges' locked ballots; sort = points, yes count, head
+  judge's points, bib).
+- `PUT .../scores/alternates` — `{ alternates: [{ competitorId, rank }] }`;
+  requires a locked submission; alternates must be in the judge's submission
+  scope, one each of rank 1/2 per role group.
+- `ScoringPage` renders Y/Alt/No toggles (unmarked submits as 'no'); once
+  locked, a "Confirm advancement" card shows the advancing entries and lets
+  the judge pick ALT 1 / ALT 2 per group from the non-advancing remainder
+  (sorted by aggregate points desc). Editable while locked.
+- Status endpoint returns `voteBallots` (votes + altRanks per locked judge)
+  and `points` per result row for advancement divisions; `DivisionStatusPage`
+  renders Y/A1/A2/N marks and a "Pts" column.
 
 ## Assumptions made
 

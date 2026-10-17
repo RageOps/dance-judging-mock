@@ -223,6 +223,17 @@ export type ScoreCompetitor = {
   leadFirstName?: string
   followFirstName?: string
   score: number | null
+  mark?: CallbackVote | null
+  altRank?: number | null
+}
+
+export type AdvancementGroup = {
+  role: 'lead' | 'follow' | 'pair'
+  results: Array<{
+    competitorId: string
+    points: number
+    advancing: boolean
+  }>
 }
 
 export type ScoreSheet = {
@@ -233,6 +244,10 @@ export type ScoreSheet = {
   scope: 'lead' | 'follow' | 'both'
   revision: number
   submittedAt: string | null
+  advancement?: {
+    advanceCount: number
+    groups: AdvancementGroup[]
+  } | null
   competitors: ScoreCompetitor[]
 }
 
@@ -254,6 +269,7 @@ export type PreliminaryResult = {
   role: 'lead' | 'follow'
   submittedScoreCount: number
   average: number
+  points?: number
   placement: number | null
   advancing: boolean
 }
@@ -265,6 +281,7 @@ export type PreliminaryPairResult = {
   followFirstName?: string
   submittedScoreCount: number
   average: number
+  points?: number
   placement: number | null
   advancing: boolean
 }
@@ -277,6 +294,11 @@ export type DivisionStatus = {
     pending: DivisionJudgeStatus[]
   }
   ballots: Array<{ judgeId: string; scores: Record<string, number> }>
+  voteBallots?: Array<{
+    judgeId: string
+    votes: Record<string, CallbackVote>
+    altRanks: Record<string, number>
+  }>
   preliminaryResults: {
     leads: PreliminaryResult[]
     follows: PreliminaryResult[]

@@ -186,12 +186,21 @@ function RoundResultsTable({
   )
 }
 
+function voteMarkLabel(vote?: string, altRank?: number) {
+  if (altRank === 1 || altRank === 2) return `A${altRank}`
+  if (vote === 'yes') return 'Y'
+  if (vote === 'alternate') return 'A'
+  if (vote === 'no') return 'N'
+  return '—'
+}
+
 function NumericResultsTable({
   title,
   rows,
   judges,
   ballotByJudge,
   showAdvancing = false,
+  voteBallotByJudge,
 }: {
   title: string
   rows: Array<{
@@ -204,22 +213,30 @@ function NumericResultsTable({
   judges: { id: string; label: string; isHead?: boolean }[]
   ballotByJudge: Map<string, Record<string, number>>
   showAdvancing?: boolean
+  voteBallotByJudge?: Map<
+    string,
+    { votes: Record<string, string>; altRanks: Record<string, number> }
+  >
 }) {
+  const isVoteMode = Boolean(voteBallotByJudge)
+  const resultHeaders = [
+    isVoteMode ? 'Pts' : 'Avg',
+    'Place',
+    ...(showAdvancing ? ['Adv'] : []),
+  ]
   return (
     <Card variant="outlined">
       <CardContent>
         <Typography variant="h6">{title}</Typography>
         {!rows.length && (
           <Typography color="text.secondary" sx={{ mt: 1 }}>
-            No locked scores yet
+            {isVoteMode ? 'No locked ballots yet' : 'No locked scores yet'}
           </Typography>
         )}
         {rows.length > 0 && (
           <JudgeScoreTable
             judges={judges}
-            resultHeaders={
-              showAdvancing ? ['Avg', 'Place', 'Adv'] : ['Avg', 'Place']
-            }
+            resultHeaders={resultHeaders}
             rows={rows.map((row) => ({
               key: row.key,
               label: row.label,
@@ -242,7 +259,14 @@ function NumericResultsTable({
                   : []),
               ],
             }))}
-            cell={(judgeId, key) => ballotByJudge.get(judgeId)?.[key] ?? '—'}
+            cell={(judgeId, key) =>
+              isVoteMode
+                ? voteMarkLabel(
+                    voteBallotByJudge?.get(judgeId)?.votes[key],
+                    voteBallotByJudge?.get(judgeId)?.altRanks[key],
+                  )
+                : (ballotByJudge.get(judgeId)?.[key] ?? '—')
+            }
           />
         )}
       </CardContent>
@@ -367,6 +391,15 @@ export default function DivisionStatusPage() {
   const ballotByJudge = new Map(
     (status?.ballots ?? []).map((ballot) => [ballot.judgeId, ballot.scores]),
   )
+  const voteBallotByJudge =
+    status?.voteBallots && status.voteBallots.length
+      ? new Map(
+          status.voteBallots.map((ballot) => [
+            ballot.judgeId,
+            { votes: ballot.votes, altRanks: ballot.altRanks },
+          ]),
+        )
+      : undefined
   const judgeColumns = (status?.judges.submitted ?? []).map((judge) => ({
     id: judge.id,
     label: judgeLabel(judge),
@@ -467,13 +500,14 @@ export default function DivisionStatusPage() {
                         ? ` — ${pair.leadFirstName} & ${pair.followFirstName}`
                         : ''
                     }`,
-                    average: pair.average,
+                    average: pair.points ?? pair.average,
                     placement: pair.placement,
                     advancing: pair.advancing,
                   }))}
                   judges={judgeColumns}
                   ballotByJudge={ballotByJudge}
                   showAdvancing={showAdvancing}
+                  voteBallotByJudge={voteBallotByJudge}
                 />
               ) : (
                 <Box
@@ -492,13 +526,14 @@ export default function DivisionStatusPage() {
                           ? ` — ${row.firstName} ${row.lastName}`
                           : ''
                       }`,
-                      average: row.average,
+                      average: row.points ?? row.average,
                       placement: row.placement,
                       advancing: row.advancing,
                     }))}
                     judges={judgeColumns}
                     ballotByJudge={ballotByJudge}
                     showAdvancing={showAdvancing}
+                    voteBallotByJudge={voteBallotByJudge}
                   />
                   <NumericResultsTable
                     title="Follows"
@@ -509,13 +544,14 @@ export default function DivisionStatusPage() {
                           ? ` — ${row.firstName} ${row.lastName}`
                           : ''
                       }`,
-                      average: row.average,
+                      average: row.points ?? row.average,
                       placement: row.placement,
                       advancing: row.advancing,
                     }))}
                     judges={judgeColumns}
                     ballotByJudge={ballotByJudge}
                     showAdvancing={showAdvancing}
+                    voteBallotByJudge={voteBallotByJudge}
                   />
                 </Box>
               )}

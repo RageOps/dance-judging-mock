@@ -215,6 +215,33 @@ export const scores = pgTable(
   ],
 )
 
+export const scoreVotes = pgTable(
+  'score_votes',
+  {
+    judgeId: uuid('judge_id').notNull(),
+    divisionId: uuid('division_id').notNull(),
+    competitorId: uuid('competitor_id')
+      .notNull()
+      .references(() => competitors.id, { onDelete: 'cascade' }),
+    vote: callbackVoteValue('vote').notNull(),
+    altRank: integer('alt_rank'),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.judgeId, table.divisionId, table.competitorId],
+    }),
+    foreignKey({
+      columns: [table.judgeId, table.divisionId],
+      foreignColumns: [scoreSubmissions.judgeId, scoreSubmissions.divisionId],
+      name: 'score_votes_submission_fk',
+    }).onDelete('cascade'),
+    check('score_votes_alt_rank_check', sql`${table.altRank} between 1 and 2`),
+  ],
+)
+
 export const divisionRounds = pgTable(
   'division_rounds',
   {

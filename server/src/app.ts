@@ -21,6 +21,7 @@ import {
   roundSubmissions,
   scores,
   scoreSubmissions,
+  scoreVotes,
 } from './db/schema.js'
 import {
   requireAdmin,
@@ -996,6 +997,14 @@ export function buildApp() {
             and(
               eq(scores.divisionId, request.params.divisionId),
               eq(scores.competitorId, request.params.competitorId),
+            ),
+          )
+        await tx
+          .delete(scoreVotes)
+          .where(
+            and(
+              eq(scoreVotes.divisionId, request.params.divisionId),
+              eq(scoreVotes.competitorId, request.params.competitorId),
             ),
           )
         const divisionRoundIds = (
