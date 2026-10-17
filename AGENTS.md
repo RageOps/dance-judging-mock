@@ -141,32 +141,22 @@
   (`PATCH` accepts `advanceCount`, `null` clears). Shown as a "Top N advance"
   chip and an "Adv" column on `DivisionStatusPage`.
 
-## Advancement voting (YES/ALT/NO) (added 2026-10-17)
+## Advancement via judge top-N yeses (added 2026-10-17)
 
-- When `advance_count` is set on a numeric division, judges vote instead of
-  scoring 1–10: each entry gets `yes`/`alternate`/`no` (equal weight per
-  judge; yes=1, alt=0.5 points). Aggregate points across locked ballots → top
-  N per group (leads/follows/strictly pairs) advance.
-- `score_votes` (judge × division × competitor → `vote` callback_vote +
-  `alt_rank` int nullable 1–2), FK'd to `score_submissions` like `scores`.
-  Migration: `server/drizzle/0015_score-votes.sql`. Scratching a competitor
-  deletes their vote rows.
-- `PUT /api/judge/events/:e/divisions/:d/scores` accepts `votes` (instead of
-  `scores`) when `advanceCount` is set — same lock/revision pattern; resubmit
-  clears `alt_rank`. The sheet GET returns `mark`/`altRank` per entry plus an
-  `advancement` block (per-group points tallies + advancing flags, computed
-  only over assigned judges' locked ballots; sort = points, yes count, head
-  judge's points, bib).
-- `PUT .../scores/alternates` — `{ alternates: [{ competitorId, rank }] }`;
-  requires a locked submission; alternates must be in the judge's submission
-  scope, one each of rank 1/2 per role group.
-- `ScoringPage` renders Y/Alt/No toggles (unmarked submits as 'no'); once
-  locked, a "Confirm advancement" card shows the advancing entries and lets
-  the judge pick ALT 1 / ALT 2 per group from the non-advancing remainder
-  (sorted by aggregate points desc). Editable while locked.
-- Status endpoint returns `voteBallots` (votes + altRanks per locked judge)
-  and `points` per result row for advancement divisions; `DivisionStatusPage`
-  renders Y/A1/A2/N marks and a "Pts" column.
+- When `advance_count` is set on a numeric division, judges still score 1–10
+  on sliders; each locked ballot counts as a "yes" for that judge's own top-N
+  scores in each group (leads/follows/strictly pairs; ties at the judge's
+  cutoff all count). Entries whose yes-count reaches the group's Nth highest
+  count are `advancing` (computed by `advancementYesCounts` in scores.ts over
+  assigned judges' locked ballots). `points` on result rows = yes count;
+  rows sort by points then average.
+- The judge sheet GET returns an `advancement` block (per-group points +
+  advancing flags); `ScoringPage` shows a read-only "Advancing" chip list
+  once the ballot is locked. `DivisionStatusPage` shows a "Yes" count column
+  plus the "Adv" chip.
+- `0015_score-votes.sql` + `0016_drop-score-votes.sql`: an earlier
+  YES/ALT/NO-vote implementation was added then reverted; keep both
+  migrations so deployed DBs converge.
 
 ## Assumptions made
 

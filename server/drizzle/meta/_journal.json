@@ -113,6 +113,13 @@
       "when": 1792249652384,
       "tag": "0015_score-votes",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792250600567,
+      "tag": "0016_drop-score-votes",
+      "breakpoints": true
     }
   ]
 }
