@@ -5,18 +5,35 @@ import {
   Card,
   CardActions,
   CardContent,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
   Snackbar,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
   Typography,
 } from '@mui/material'
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { api, type Competitor, type Event } from '../api/client'
+import {
+  api,
+  type Competitor,
+  type Division,
+  type Event,
+  type ImportPreview,
+  type ImportResult,
+} from '../api/client'
 
 type CompetitorForm = { firstName: string; lastName: string }
 const emptyForm: CompetitorForm = { firstName: '', lastName: '' }
@@ -26,21 +43,32 @@ export default function CompetitorsPage() {
   const navigate = useNavigate()
   const [event, setEvent] = useState<Event | null>(null)
   const [competitors, setCompetitors] = useState<Competitor[]>([])
+  const [divisions, setDivisions] = useState<Division[]>([])
   const [form, setForm] = useState(emptyForm)
   const [editing, setEditing] = useState<Competitor | null>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importBusy, setImportBusy] = useState(false)
+  const [importCsv, setImportCsv] = useState('')
+  const [importFileName, setImportFileName] = useState('')
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
+  const [importJackAndJill, setImportJackAndJill] = useState('')
+  const [importStrictly, setImportStrictly] = useState('')
+  const [importError, setImportError] = useState('')
 
   const load = useCallback(async () => {
     try {
-      const [eventResult, competitorResult] = await Promise.all([
+      const [eventResult, competitorResult, divisionResult] = await Promise.all([
         api<Event>(`/events/${eventId}`),
         api<Competitor[]>(`/events/${eventId}/competitors`),
+        api<Division[]>(`/events/${eventId}/divisions`),
       ])
       setEvent(eventResult)
       setCompetitors(competitorResult)
+      setDivisions(divisionResult)
       setLoaded(true)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to load competitors')
@@ -103,6 +131,72 @@ export default function CompetitorsPage() {
     }
   }
 
+  function closeImport() {
+    setImportOpen(false)
+    setImportCsv('')
+    setImportFileName('')
+    setImportPreview(null)
+    setImportError('')
+  }
+
+  async function chooseImportFile(changeEvent: ChangeEvent<HTMLInputElement>) {
+    const file = changeEvent.target.files?.[0]
+    changeEvent.target.value = ''
+    if (!file) return
+    setImportError('')
+    setImportBusy(true)
+    try {
+      const csv = await file.text()
+      const preview = await api<ImportPreview>(
+        `/events/${eventId}/competitors/import`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ csv, dryRun: true }),
+        },
+      )
+      setImportCsv(csv)
+      setImportFileName(file.name)
+      setImportPreview(preview)
+      setImportJackAndJill(preview.divisions.jackAndJill ?? '')
+      setImportStrictly(preview.divisions.strictly ?? '')
+    } catch (reason) {
+      setImportError(reason instanceof Error ? reason.message : 'Unable to parse CSV')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  async function runImport() {
+    setImportError('')
+    setImportBusy(true)
+    try {
+      const result = await api<ImportResult>(
+        `/events/${eventId}/competitors/import`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            csv: importCsv,
+            divisions: {
+              jackAndJill: importJackAndJill || null,
+              strictly: importStrictly || null,
+            },
+          }),
+        },
+      )
+      closeImport()
+      setSuccess(
+        `Imported ${result.competitorsCreated} competitors (${result.competitorsMatched} already existed), ` +
+          `${result.registrationsAdded} registrations added` +
+          (result.warnings.length ? ` — ${result.warnings.length} warning(s)` : ''),
+      )
+      void load()
+    } catch (reason) {
+      setImportError(reason instanceof Error ? reason.message : 'Unable to import')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
   const competitorFormFields = (
     <>
       <TextField
@@ -133,6 +227,12 @@ export default function CompetitorsPage() {
               Add competitor
             </Button>
           )}
+          <Button
+            variant="outlined"
+            onClick={() => setImportOpen(true)}
+          >
+            Import CSV
+          </Button>
           <Button
             variant="outlined"
             onClick={() => navigate(`/events/${eventId}/competitors/check-in`)}
@@ -223,6 +323,154 @@ export default function CompetitorsPage() {
             </Button>
           </DialogActions>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={importOpen}
+        onClose={closeImport}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>Import competitors from CSV</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {importError && (
+              <Alert severity="error" onClose={() => setImportError('')}>
+                {importError}
+              </Alert>
+            )}
+            <Typography variant="body2" color="text.secondary">
+              Upload a Danceplace customer list report. Competitors are created
+              from paid competition tickets (Jack &amp; Jill / Strictly);
+              day-pass-only attendees are skipped.
+            </Typography>
+            <Box>
+              <Button component="label" variant="outlined" disabled={importBusy}>
+                {importPreview ? 'Choose a different file' : 'Choose CSV file'}
+                <input
+                  hidden
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(event) => void chooseImportFile(event)}
+                />
+              </Button>
+              {importFileName && (
+                <Typography component="span" variant="body2" sx={{ ml: 2 }}>
+                  {importFileName}
+                </Typography>
+              )}
+            </Box>
+            {importBusy && !importPreview && (
+              <Typography color="text.secondary">Parsing…</Typography>
+            )}
+            {importPreview && (
+              <>
+                {importPreview.warnings.map((warning) => (
+                  <Alert key={warning} severity="warning">
+                    {warning}
+                  </Alert>
+                ))}
+                <Stack direction="row" spacing={2}>
+                  <FormControl fullWidth>
+                    <InputLabel id="import-jj-label">
+                      Jack &amp; Jill division
+                    </InputLabel>
+                    <Select
+                      labelId="import-jj-label"
+                      label="Jack & Jill division"
+                      value={importJackAndJill}
+                      onChange={(event) => setImportJackAndJill(event.target.value)}
+                    >
+                      <MenuItem value="">Don't import</MenuItem>
+                      {divisions
+                        .filter((division) => division.type === 'jack_and_jill')
+                        .map((division) => (
+                          <MenuItem key={division.id} value={division.id}>
+                            {division.name}
+                          </MenuItem>
+                        ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl fullWidth>
+                    <InputLabel id="import-strictly-label">
+                      Strictly division
+                    </InputLabel>
+                    <Select
+                      labelId="import-strictly-label"
+                      label="Strictly division"
+                      value={importStrictly}
+                      onChange={(event) => setImportStrictly(event.target.value)}
+                    >
+                      <MenuItem value="">Don't import</MenuItem>
+                      {divisions
+                        .filter((division) => division.type === 'strictly')
+                        .map((division) => (
+                          <MenuItem key={division.id} value={division.id}>
+                            {division.name}
+                          </MenuItem>
+                        ))}
+                    </Select>
+                  </FormControl>
+                </Stack>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Jack &amp; Jill</TableCell>
+                      <TableCell>Strictly</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {importPreview.people.map((person) => (
+                      <TableRow key={person.name}>
+                        <TableCell>
+                          {person.firstName} {person.lastName}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            color={person.existing ? 'default' : 'success'}
+                            label={person.existing ? 'Existing' : 'New'}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {person.jackAndJillRole
+                            ? person.jackAndJillRole === 'lead'
+                              ? 'Lead'
+                              : 'Follow'
+                            : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {person.inStrictly
+                            ? person.strictlyRole === 'lead'
+                              ? 'Lead'
+                              : person.strictlyRole === 'follow'
+                                ? 'Follow'
+                                : 'Role unknown'
+                            : '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeImport}>Cancel</Button>
+          {importPreview && (
+            <Button
+              variant="contained"
+              onClick={() => void runImport()}
+              disabled={importBusy}
+            >
+              Import {importPreview.people.length} competitors
+            </Button>
+          )}
+        </DialogActions>
       </Dialog>
 
       <Snackbar

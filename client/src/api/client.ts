@@ -143,6 +143,32 @@ export type RoundResults = {
   }
 }
 
+export type ImportPreviewPerson = {
+  name: string
+  firstName: string
+  lastName: string
+  jackAndJillRole: 'lead' | 'follow' | null
+  inStrictly: boolean
+  strictlyRole: 'lead' | 'follow' | null
+  existing: boolean
+}
+
+export type ImportPreview = {
+  people: ImportPreviewPerson[]
+  divisions: { jackAndJill: string | null; strictly: string | null }
+  warnings: string[]
+  skippedRows: number
+}
+
+export type ImportResult = {
+  competitorsCreated: number
+  competitorsMatched: number
+  registrationsAdded: number
+  registrationsUpdated: number
+  warnings: string[]
+  skippedRows: number
+}
+
 export type Registration = {
   competitorId: string
   bibNumber: number

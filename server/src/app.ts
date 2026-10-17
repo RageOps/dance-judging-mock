@@ -29,6 +29,7 @@ import {
   requireEventManager,
   requireEventManagerAccess,
 } from './middleware/auth.js'
+import { extractDanceplaceCompetitors } from './competitorImport.js'
 import { authRoutes } from './routes/auth.js'
 import { coordinatorRoutes } from './routes/coordinators.js'
 import { judgeRoutes } from './routes/judges.js'
@@ -183,6 +184,234 @@ export function buildApp() {
       })
       if (!competitor) return reply.code(404).send({ message: 'Event not found' })
       return reply.code(201).send(competitor)
+    },
+  )
+
+  app.post<{ Params: { eventId: string } }>(
+    '/api/events/:eventId/competitors/import',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      if (!(await requireEventManagerAccess(request, reply, request.params.eventId))) return
+      const body = isRecord(request.body) ? request.body : {}
+      const csv = typeof body.csv === 'string' ? body.csv : ''
+      if (!csv.trim()) {
+        return reply.code(400).send({ message: 'CSV content is required' })
+      }
+      const dryRun = body.dryRun === true
+      const mapping = isRecord(body.divisions) ? body.divisions : {}
+
+      let parsed: ReturnType<typeof extractDanceplaceCompetitors>
+      try {
+        parsed = extractDanceplaceCompetitors(csv)
+      } catch (reason) {
+        return reply.code(400).send({
+          message: reason instanceof Error ? reason.message : 'Unable to parse CSV',
+        })
+      }
+      const { people, skippedRows, warnings } = parsed
+      if (!people.length) {
+        return reply.code(400).send({ message: 'No competitors found in the CSV' })
+      }
+
+      const divisionRows = await db
+        .select()
+        .from(divisions)
+        .where(eq(divisions.eventId, request.params.eventId))
+        .orderBy(asc(divisions.createdAt))
+
+      const resolveDivision = (
+        value: unknown,
+        type: 'jack_and_jill' | 'strictly',
+      ) => {
+        if (value === undefined) {
+          return divisionRows.find((row) => row.type === type) ?? null
+        }
+        const id = nonEmptyString(value)
+        if (!id) return null
+        return (
+          divisionRows.find((row) => row.id === id && row.type === type) ??
+          undefined
+        )
+      }
+      const jackAndJillDivision = resolveDivision(
+        mapping.jackAndJill,
+        'jack_and_jill',
+      )
+      const strictlyDivision = resolveDivision(mapping.strictly, 'strictly')
+      if (jackAndJillDivision === undefined || strictlyDivision === undefined) {
+        return reply
+          .code(400)
+          .send({ message: 'Division mapping must reference this event' })
+      }
+
+      const existingCompetitors = await db
+        .select({
+          id: competitors.id,
+          firstName: competitors.firstName,
+          lastName: competitors.lastName,
+        })
+        .from(competitors)
+        .where(eq(competitors.eventId, request.params.eventId))
+      const existingByName = new Map(
+        existingCompetitors.map((row) => [
+          `${row.firstName.trim().toLowerCase()}|${row.lastName.trim().toLowerCase()}`,
+          row.id,
+        ]),
+      )
+      const nameKey = (firstName: string, lastName: string) =>
+        `${firstName.trim().toLowerCase()}|${lastName.trim().toLowerCase()}`
+
+      if (dryRun) {
+        return {
+          people: people.map((person) => ({
+            ...person,
+            existing: existingByName.has(
+              nameKey(person.firstName, person.lastName),
+            ),
+          })),
+          divisions: {
+            jackAndJill: jackAndJillDivision?.id ?? null,
+            strictly: strictlyDivision?.id ?? null,
+          },
+          warnings,
+          skippedRows,
+        }
+      }
+
+      const divisionLocked = async (divisionId: string) => {
+        const [submission] = await db
+          .select({ divisionId: scoreSubmissions.divisionId })
+          .from(scoreSubmissions)
+          .where(eq(scoreSubmissions.divisionId, divisionId))
+          .limit(1)
+        if (submission) return true
+        const [round] = await db
+          .select({ id: divisionRounds.id })
+          .from(divisionRounds)
+          .innerJoin(
+            roundSubmissions,
+            eq(roundSubmissions.roundId, divisionRounds.id),
+          )
+          .where(eq(divisionRounds.divisionId, divisionId))
+          .limit(1)
+        return Boolean(round)
+      }
+
+      const targets: Array<{
+        division: (typeof divisionRows)[number]
+        entries: Array<{ person: (typeof people)[number]; role: 'lead' | 'follow' }>
+        currentRoles?: Map<string, string>
+      }> = []
+      if (jackAndJillDivision) {
+        targets.push({
+          division: jackAndJillDivision,
+          entries: people
+            .filter((person) => person.jackAndJillRole)
+            .map((person) => ({
+              person,
+              role: person.jackAndJillRole!,
+            })),
+        })
+      }
+      if (strictlyDivision) {
+        targets.push({
+          division: strictlyDivision,
+          entries: people
+            .filter((person) => person.inStrictly && person.strictlyRole)
+            .map((person) => ({ person, role: person.strictlyRole! })),
+        })
+      }
+
+      const result = {
+        competitorsCreated: 0,
+        competitorsMatched: 0,
+        registrationsAdded: 0,
+        registrationsUpdated: 0,
+        warnings: [...warnings],
+        skippedRows,
+      }
+
+      for (const target of targets) {
+        if (await divisionLocked(target.division.id)) {
+          result.warnings.push(
+            `${target.division.name}: skipped, scoring has already started`,
+          )
+          continue
+        }
+        const currentRegistrations = await db
+          .select({
+            competitorId: divisionRegistrations.competitorId,
+            role: divisionRegistrations.role,
+          })
+          .from(divisionRegistrations)
+          .where(eq(divisionRegistrations.divisionId, target.division.id))
+        target.currentRoles = new Map(
+          currentRegistrations.map((row) => [row.competitorId, row.role]),
+        )
+      }
+
+      await db.transaction(async (tx) => {
+        const competitorIdByName = new Map(existingByName)
+        for (const person of people) {
+          const key = nameKey(person.firstName, person.lastName)
+          if (competitorIdByName.has(key)) {
+            result.competitorsMatched++
+            continue
+          }
+          const [event] = await tx
+            .update(events)
+            .set({ nextBibNumber: sql`${events.nextBibNumber} + 1` })
+            .where(eq(events.id, request.params.eventId))
+            .returning({ nextBibNumber: events.nextBibNumber })
+          if (!event) throw new Error('Event not found')
+          const [created] = await tx
+            .insert(competitors)
+            .values({
+              eventId: request.params.eventId,
+              bibNumber: event.nextBibNumber - 1,
+              firstName: person.firstName,
+              lastName: person.lastName,
+            })
+            .returning()
+          if (!created) throw new Error('Unable to create competitor')
+          competitorIdByName.set(key, created.id)
+          result.competitorsCreated++
+        }
+
+        for (const target of targets) {
+          const currentRoles = target.currentRoles
+          if (!currentRoles) continue
+          for (const { person, role } of target.entries) {
+            const competitorId = competitorIdByName.get(
+              nameKey(person.firstName, person.lastName),
+            )
+            if (!competitorId) continue
+            const existingRole = currentRoles.get(competitorId)
+            if (existingRole === role) continue
+            if (existingRole) {
+              await tx
+                .update(divisionRegistrations)
+                .set({ role })
+                .where(
+                  and(
+                    eq(divisionRegistrations.divisionId, target.division.id),
+                    eq(divisionRegistrations.competitorId, competitorId),
+                  ),
+                )
+              result.registrationsUpdated++
+            } else {
+              await tx.insert(divisionRegistrations).values({
+                divisionId: target.division.id,
+                competitorId,
+                role,
+              })
+              result.registrationsAdded++
+            }
+          }
+        }
+      })
+
+      return result
     },
   )
 
