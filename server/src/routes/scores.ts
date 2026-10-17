@@ -634,6 +634,18 @@ export async function scoreRoutes(app: FastifyInstance) {
         })
         .filter((row) => row !== null)
 
+      const markAdvancing = <T extends { average: number }>(rows: T[]) => {
+        const advanceCount = division.advanceCount
+        if (!advanceCount || advanceCount < 1 || !rows.length) {
+          return rows.map((row) => ({ ...row, advancing: false }))
+        }
+        const cutoff = rows[Math.min(advanceCount, rows.length) - 1]!.average
+        return rows.map((row) => ({
+          ...row,
+          advancing: row.average >= cutoff,
+        }))
+      }
+
       const sortResults = (role: 'lead' | 'follow') =>
         resultRows
           .filter((row) => row.role === role)
@@ -712,7 +724,7 @@ export async function scoreRoutes(app: FastifyInstance) {
           preliminaryResults: {
             leads: [],
             follows: [],
-            pairs: pairResults,
+            pairs: markAdvancing(pairResults),
           },
         }
       }
@@ -726,8 +738,8 @@ export async function scoreRoutes(app: FastifyInstance) {
         },
         ballots,
         preliminaryResults: {
-          leads: sortResults('lead'),
-          follows: sortResults('follow'),
+          leads: markAdvancing(sortResults('lead')),
+          follows: markAdvancing(sortResults('follow')),
           pairs: [],
         },
       }

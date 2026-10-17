@@ -551,6 +551,7 @@ export function buildApp() {
           type: divisions.type,
           scoringMode: divisions.scoringMode,
           showCompetitorNames: divisions.showCompetitorNames,
+          advanceCount: divisions.advanceCount,
           lineUpCheckInCompletedAt: divisions.lineUpCheckInCompletedAt,
           createdAt: divisions.createdAt,
           registrationCount: count(divisionRegistrations.competitorId),
@@ -647,7 +648,15 @@ export function buildApp() {
         typeof body.showCompetitorNames === 'boolean'
           ? body.showCompetitorNames
           : true
-      if (!name || !type) {
+      const advanceCount =
+        body.advanceCount === undefined || body.advanceCount === null
+          ? null
+          : typeof body.advanceCount === 'number' &&
+              Number.isInteger(body.advanceCount) &&
+              body.advanceCount > 0
+            ? body.advanceCount
+            : undefined
+      if (!name || !type || advanceCount === undefined) {
         return reply.code(400).send({ message: 'Valid name and type are required' })
       }
       const [created] = await db
@@ -658,6 +667,7 @@ export function buildApp() {
           type,
           scoringMode,
           showCompetitorNames,
+          advanceCount,
         })
         .returning()
       return reply.code(201).send(created)
@@ -685,7 +695,17 @@ export function buildApp() {
         typeof body.lineUpCheckInComplete === 'boolean'
           ? body.lineUpCheckInComplete
           : undefined
-      if (!name || !type) {
+      const advanceCount =
+        body.advanceCount === undefined
+          ? undefined
+          : body.advanceCount === null
+            ? null
+            : typeof body.advanceCount === 'number' &&
+                Number.isInteger(body.advanceCount) &&
+                body.advanceCount > 0
+              ? body.advanceCount
+              : 'invalid'
+      if (!name || !type || advanceCount === 'invalid') {
         return reply.code(400).send({ message: 'Valid name and type are required' })
       }
       const [updated] = await db
@@ -695,6 +715,7 @@ export function buildApp() {
           type,
           ...(scoringMode === undefined ? {} : { scoringMode }),
           ...(showCompetitorNames === undefined ? {} : { showCompetitorNames }),
+          ...(advanceCount === undefined ? {} : { advanceCount }),
           ...(lineUpCheckInComplete === undefined
             ? {}
             : {

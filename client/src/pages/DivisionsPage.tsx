@@ -42,6 +42,105 @@ import {
 
 type Role = 'lead' | 'follow'
 
+type DivisionForm = {
+  name: string
+  type: 'jack_and_jill' | 'strictly'
+  scoringMode: 'numeric' | 'rounds'
+  showCompetitorNames: boolean
+  advanceCount: string
+}
+
+const emptyDivisionForm: DivisionForm = {
+  name: '',
+  type: 'jack_and_jill',
+  scoringMode: 'numeric',
+  showCompetitorNames: true,
+  advanceCount: '',
+}
+
+function parseAdvanceCount(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const parsed = Number(trimmed)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
+}
+
+function divisionFormFields(
+  form: DivisionForm,
+  setForm: (form: DivisionForm) => void,
+) {
+  return (
+    <>
+      <TextField
+        label="Division name"
+        value={form.name}
+        onChange={(event) => setForm({ ...form, name: event.target.value })}
+        required
+      />
+      <FormControl>
+        <InputLabel id="division-type-label">Division type</InputLabel>
+        <Select
+          labelId="division-type-label"
+          label="Division type"
+          value={form.type}
+          onChange={(event) =>
+            setForm({
+              ...form,
+              type: event.target.value as 'jack_and_jill' | 'strictly',
+            })
+          }
+        >
+          <MenuItem value="jack_and_jill">Jack & Jill</MenuItem>
+          <MenuItem value="strictly">Strictly</MenuItem>
+        </Select>
+      </FormControl>
+      <FormControl>
+        <InputLabel id="division-scoring-label">Scoring</InputLabel>
+        <Select
+          labelId="division-scoring-label"
+          label="Scoring"
+          value={form.scoringMode}
+          onChange={(event) =>
+            setForm({
+              ...form,
+              scoringMode: event.target.value as 'numeric' | 'rounds',
+            })
+          }
+        >
+          <MenuItem value="numeric">Numeric (1–10)</MenuItem>
+          <MenuItem value="rounds">
+            Rounds (callback + relative placement)
+          </MenuItem>
+        </Select>
+      </FormControl>
+      <TextField
+        label="Advance to next round (top N)"
+        type="number"
+        value={form.advanceCount}
+        onChange={(event) =>
+          setForm({ ...form, advanceCount: event.target.value })
+        }
+        slotProps={{ htmlInput: { min: 1 } }}
+        helperText="Numeric scoring: the N highest-scoring entries in each group are marked as advancing. Blank for no cutoff."
+      />
+      <FormControlLabel
+        control={
+          <Switch
+            checked={form.showCompetitorNames}
+            onChange={(event) =>
+              setForm({ ...form, showCompetitorNames: event.target.checked })
+            }
+          />
+        }
+        label="Show competitor names to judges"
+      />
+      <Typography variant="body2" color="text.secondary">
+        When disabled, judges see only bib numbers and lead/follow roles.
+      </Typography>
+    </>
+  )
+}
+
 const judgingStatusChip: Record<
   Division['judgingStatus'],
   { label: string; color: 'default' | 'warning' | 'success' }
@@ -310,10 +409,10 @@ export default function DivisionsPage() {
   const [event, setEvent] = useState<Event | null>(null)
   const [competitors, setCompetitors] = useState<Competitor[]>([])
   const [divisions, setDivisions] = useState<Division[]>([])
-  const [name, setName] = useState('')
-  const [type, setType] = useState<'jack_and_jill' | 'strictly'>('jack_and_jill')
-  const [scoringMode, setScoringMode] = useState<'numeric' | 'rounds'>('numeric')
-  const [showCompetitorNames, setShowCompetitorNames] = useState(true)
+  const [form, setForm] = useState(emptyDivisionForm)
+  const [editing, setEditing] = useState<
+    (DivisionForm & { id: string }) | null
+  >(null)
   const [error, setError] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -342,20 +441,75 @@ export default function DivisionsPage() {
   async function createDivision(submitEvent: FormEvent) {
     submitEvent.preventDefault()
     setError('')
+    const advanceCount = parseAdvanceCount(form.advanceCount)
+    if (advanceCount === undefined) {
+      setError('Advance count must be a positive whole number')
+      return
+    }
     try {
       const created = await api<Division>(`/events/${eventId}/divisions`, {
         method: 'POST',
-        body: JSON.stringify({ name, type, scoringMode, showCompetitorNames }),
+        body: JSON.stringify({
+          name: form.name,
+          type: form.type,
+          scoringMode: form.scoringMode,
+          showCompetitorNames: form.showCompetitorNames,
+          advanceCount,
+        }),
       })
       setDivisions((current) => [
         ...current,
         { ...created, registrationCount: 0, judgingStatus: 'not_started' },
       ])
-      setName('')
-      setShowCompetitorNames(true)
+      setForm(emptyDivisionForm)
       setDialogOpen(false)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to create division')
+    }
+  }
+
+  function openEdit(division: Division) {
+    setEditing({
+      id: division.id,
+      name: division.name,
+      type: division.type,
+      scoringMode: division.scoringMode,
+      showCompetitorNames: division.showCompetitorNames,
+      advanceCount: division.advanceCount?.toString() ?? '',
+    })
+  }
+
+  async function saveEdit(submitEvent: FormEvent) {
+    submitEvent.preventDefault()
+    if (!editing) return
+    setError('')
+    const advanceCount = parseAdvanceCount(editing.advanceCount)
+    if (advanceCount === undefined) {
+      setError('Advance count must be a positive whole number')
+      return
+    }
+    try {
+      const updated = await api<Division>(
+        `/events/${eventId}/divisions/${editing.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: editing.name,
+            type: editing.type,
+            scoringMode: editing.scoringMode,
+            showCompetitorNames: editing.showCompetitorNames,
+            advanceCount,
+          }),
+        },
+      )
+      setDivisions((current) =>
+        current.map((division) =>
+          division.id === updated.id ? { ...division, ...updated } : division,
+        ),
+      )
+      setEditing(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to update division')
     }
   }
 
@@ -411,61 +565,6 @@ export default function DivisionsPage() {
     }
   }
 
-  const divisionFormFields = (
-    <>
-      <TextField
-        label="Division name"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        required
-      />
-      <FormControl>
-        <InputLabel id="division-type-label">Division type</InputLabel>
-        <Select
-          labelId="division-type-label"
-          label="Division type"
-          value={type}
-          onChange={(event) =>
-            setType(event.target.value as 'jack_and_jill' | 'strictly')
-          }
-        >
-          <MenuItem value="jack_and_jill">Jack & Jill</MenuItem>
-          <MenuItem value="strictly">Strictly</MenuItem>
-        </Select>
-      </FormControl>
-      <FormControl>
-        <InputLabel id="division-scoring-label">Scoring</InputLabel>
-        <Select
-          labelId="division-scoring-label"
-          label="Scoring"
-          value={scoringMode}
-          onChange={(event) =>
-            setScoringMode(event.target.value as 'numeric' | 'rounds')
-          }
-        >
-          <MenuItem value="numeric">Numeric (1–10)</MenuItem>
-          <MenuItem value="rounds">
-            Rounds (callback + relative placement)
-          </MenuItem>
-        </Select>
-      </FormControl>
-      <FormControlLabel
-        control={
-          <Switch
-            checked={showCompetitorNames}
-            onChange={(event) =>
-              setShowCompetitorNames(event.target.checked)
-            }
-          />
-        }
-        label="Show competitor names to judges"
-      />
-      <Typography variant="body2" color="text.secondary">
-        When disabled, judges see only bib numbers and lead/follow roles.
-      </Typography>
-    </>
-  )
-
   return (
     <>
       <Button onClick={() => navigate('/events')} sx={{ mb: 1 }}>
@@ -480,7 +579,7 @@ export default function DivisionsPage() {
         <Card variant="outlined" sx={{ mb: 3 }}>
           <CardContent>
             <Stack component="form" onSubmit={createDivision} spacing={2}>
-              {divisionFormFields}
+              {divisionFormFields(form, setForm)}
               <Button type="submit" variant="contained" size="large">
                 Create division
               </Button>
@@ -521,6 +620,13 @@ export default function DivisionsPage() {
                 variant="outlined"
                 label={division.scoringMode === 'rounds' ? 'Rounds' : 'Numeric'}
               />
+              {division.advanceCount != null && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`Top ${division.advanceCount} advance`}
+                />
+              )}
               {division.lineUpCheckInCompletedAt && (
                 <Chip
                   size="small"
@@ -597,6 +703,9 @@ export default function DivisionsPage() {
               >
                 Division status
               </Button>
+              <Button variant="outlined" onClick={() => openEdit(division)}>
+                Edit
+              </Button>
               <Button
                 variant="outlined"
                 color="error"
@@ -634,7 +743,7 @@ export default function DivisionsPage() {
           <DialogTitle>New division</DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
-              {divisionFormFields}
+              {divisionFormFields(form, setForm)}
             </Stack>
           </DialogContent>
           <DialogActions>
@@ -644,6 +753,31 @@ export default function DivisionsPage() {
             </Button>
           </DialogActions>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        fullWidth
+      >
+        {editing && (
+          <form onSubmit={saveEdit}>
+            <DialogTitle>Edit division</DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                {divisionFormFields(editing, (next) =>
+                  setEditing({ ...editing, ...next }),
+                )}
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setEditing(null)}>Cancel</Button>
+              <Button type="submit" variant="contained">
+                Save
+              </Button>
+            </DialogActions>
+          </form>
+        )}
       </Dialog>
     </>
   )

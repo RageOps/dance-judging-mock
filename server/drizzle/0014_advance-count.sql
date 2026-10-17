@@ -1,0 +1,1 @@
+ALTER TABLE "divisions" ADD COLUMN "advance_count" integer;

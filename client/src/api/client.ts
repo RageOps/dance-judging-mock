@@ -39,6 +39,7 @@ export type Division = {
   type: 'jack_and_jill' | 'strictly'
   scoringMode: 'numeric' | 'rounds'
   showCompetitorNames: boolean
+  advanceCount: number | null
   lineUpCheckInCompletedAt: string | null
   judgingStatus: JudgingStatus
   registrationCount: number
@@ -254,6 +255,7 @@ export type PreliminaryResult = {
   submittedScoreCount: number
   average: number
   placement: number | null
+  advancing: boolean
 }
 
 export type PreliminaryPairResult = {
@@ -264,6 +266,7 @@ export type PreliminaryPairResult = {
   submittedScoreCount: number
   average: number
   placement: number | null
+  advancing: boolean
 }
 
 export type DivisionStatus = {

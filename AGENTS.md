@@ -118,6 +118,29 @@
   and placements across the division's rounds. Registration/pair edits are
   blocked once any round submission exists.
 
+## Danceplace CSV competitor import (added 2026-10-17)
+
+- `POST /api/events/:eventId/competitors/import` accepts `{ csv, dryRun?, divisions? }`.
+  Parses a Danceplace customer-list report (`server/src/competitorImport.ts`),
+  skipping non-"Paid" rows and non-competition tickets, and deduping by name.
+  J&J role comes from the ticket's `- LEAD`/`- FOLLOW` suffix; Strictly
+  entrants inherit their J&J role. `dryRun` returns a preview; commit creates
+  competitors (same `next_bib_number` bump as the single-add route, matched by
+  name so re-imports are idempotent) and merges `division_registrations`.
+  `divisions` maps `{ jackAndJill, strictly }` to division ids — absent key
+  auto-picks the first division of that type, explicit `null` skips.
+- Client: "Import CSV" button + preview dialog on `CompetitorsPage`.
+
+## Numeric-mode advancement cutoff (added 2026-10-17)
+
+- `divisions.advance_count` (integer, nullable): the N highest-scoring entries
+  per results group (leads / follows / strictly pairs) are flagged `advancing`
+  in the division status response. Ties at the cutoff average all advance.
+  Migration: `server/drizzle/0014_advance-count.sql`.
+- Set at division creation or via the Edit dialog on `DivisionsPage`
+  (`PATCH` accepts `advanceCount`, `null` clears). Shown as a "Top N advance"
+  chip and an "Adv" column on `DivisionStatusPage`.
+
 ## Assumptions made
 
 - Bib numbers are still auto-assigned provisionally at registration (avoids

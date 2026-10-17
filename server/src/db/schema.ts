@@ -123,6 +123,7 @@ export const divisions = pgTable('divisions', {
   type: divisionType('type').notNull(),
   scoringMode: divisionScoringMode('scoring_mode').notNull().default('numeric'),
   showCompetitorNames: boolean('show_competitor_names').notNull().default(true),
+  advanceCount: integer('advance_count'),
   lineUpCheckInCompletedAt: timestamp('line_up_check_in_completed_at', {
     withTimezone: true,
   }),

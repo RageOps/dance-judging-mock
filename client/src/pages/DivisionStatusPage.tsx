@@ -191,6 +191,7 @@ function NumericResultsTable({
   rows,
   judges,
   ballotByJudge,
+  showAdvancing = false,
 }: {
   title: string
   rows: Array<{
@@ -198,9 +199,11 @@ function NumericResultsTable({
     label: string
     average: number
     placement: number | null
+    advancing?: boolean
   }>
   judges: { id: string; label: string; isHead?: boolean }[]
   ballotByJudge: Map<string, Record<string, number>>
+  showAdvancing?: boolean
 }) {
   return (
     <Card variant="outlined">
@@ -214,11 +217,30 @@ function NumericResultsTable({
         {rows.length > 0 && (
           <JudgeScoreTable
             judges={judges}
-            resultHeaders={['Avg', 'Place']}
+            resultHeaders={
+              showAdvancing ? ['Avg', 'Place', 'Adv'] : ['Avg', 'Place']
+            }
             rows={rows.map((row) => ({
               key: row.key,
               label: row.label,
-              results: [row.average.toFixed(2), row.placement ?? '—'],
+              results: [
+                row.average.toFixed(2),
+                row.placement ?? '—',
+                ...(showAdvancing
+                  ? [
+                      row.advancing ? (
+                        <Chip
+                          key="advancing"
+                          size="small"
+                          color="success"
+                          label="Yes"
+                        />
+                      ) : (
+                        '—'
+                      ),
+                    ]
+                  : []),
+              ],
             }))}
             cell={(judgeId, key) => ballotByJudge.get(judgeId)?.[key] ?? '—'}
           />
@@ -340,6 +362,8 @@ export default function DivisionStatusPage() {
   const submittedCount = status?.judges.submitted.length ?? 0
   const pendingCount = status?.judges.pending.length ?? 0
   const isStrictly = status?.division.type === 'strictly'
+  const advanceCount = status?.division.advanceCount ?? null
+  const showAdvancing = Boolean(advanceCount && advanceCount > 0)
   const ballotByJudge = new Map(
     (status?.ballots ?? []).map((ballot) => [ballot.judgeId, ballot.scores]),
   )
@@ -428,6 +452,9 @@ export default function DivisionStatusPage() {
                 <Typography variant="h6">Provisional results</Typography>
                 <Alert severity="info" sx={{ mt: 1 }}>
                   Preliminary — scoring rules not finalized.
+                  {showAdvancing
+                    ? ` Top ${advanceCount} highest-scoring entries in each group are marked as advancing.`
+                    : ''}
                 </Alert>
               </Box>
               {isStrictly ? (
@@ -442,9 +469,11 @@ export default function DivisionStatusPage() {
                     }`,
                     average: pair.average,
                     placement: pair.placement,
+                    advancing: pair.advancing,
                   }))}
                   judges={judgeColumns}
                   ballotByJudge={ballotByJudge}
+                  showAdvancing={showAdvancing}
                 />
               ) : (
                 <Box
@@ -465,9 +494,11 @@ export default function DivisionStatusPage() {
                       }`,
                       average: row.average,
                       placement: row.placement,
+                      advancing: row.advancing,
                     }))}
                     judges={judgeColumns}
                     ballotByJudge={ballotByJudge}
+                    showAdvancing={showAdvancing}
                   />
                   <NumericResultsTable
                     title="Follows"
@@ -480,9 +511,11 @@ export default function DivisionStatusPage() {
                       }`,
                       average: row.average,
                       placement: row.placement,
+                      advancing: row.advancing,
                     }))}
                     judges={judgeColumns}
                     ballotByJudge={ballotByJudge}
+                    showAdvancing={showAdvancing}
                   />
                 </Box>
               )}
